@@ -1,0 +1,45 @@
+name: Stránka
+
+# Složí stránku z kódu (větev main) a šifrovaných dat (větev data, posílá je repozitář datasety)
+# a zveřejní ji na GitHub Pages. Spouští se při každé nové dávce dat i při změně kódu.
+
+on:
+  push:
+    branches: [main, data]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  nasazeni:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.nasazeni.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: web
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+      - name: Složení
+        run: |
+          mkdir -p site
+          cp web/index.html web/app.js web/styl.css web/.nojekyll site/
+          cp data/data.enc data/info.json site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: nasazeni
+        uses: actions/deploy-pages@v4

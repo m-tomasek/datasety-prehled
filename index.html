@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Datasety – přehled</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<link rel="stylesheet" href="styl.css">
+</head>
+<body>
+<div id="zamek" class="zamek">
+  <form id="prihlaseni" class="karta prihlaseni">
+    <h1>Datasety – přehled</h1>
+    <p class="tlumene">Data jsou zašifrovaná. Zadejte heslo.</p>
+    <input id="heslo" type="password" autocomplete="current-password" placeholder="Heslo" required>
+    <label class="radek"><input id="pamatovat" type="checkbox"> Zapamatovat na tomto zařízení</label>
+    <button type="submit">Otevřít</button>
+    <p id="chyba" class="chyba" hidden></p>
+  </form>
+</div>
+
+<div id="aplikace" hidden>
+  <header class="hlavicka">
+    <div class="nazev">Datasety – přehled</div>
+    <nav id="zalozky" class="zalozky" role="tablist">
+      <button data-z="prehled" class="aktivni">Přehled</button>
+      <button data-z="mapa">Mapa</button>
+      <button data-z="nabidky">Dražby a nabídky</button>
+      <button data-z="desky">Úřední desky</button>
+      <button data-z="up">Územní plány</button>
+      <button data-z="stav">Stav botů</button>
+    </nav>
+    <div class="vpravo"><span id="stari" class="tlumene"></span><button id="odhlasit" class="maly">Zamknout</button></div>
+  </header>
+
+  <main>
+    <!-- PŘEHLED -->
+    <section id="z-prehled" class="zalozka">
+      <div id="dlazdice" class="dlazdice"></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Dokumenty z úředních desek po týdnech</h2><div id="g-tydny" class="graf"></div></div>
+        <div class="karta"><h2>Aktivní nabídky podle okresu (prvních 15)</h2><div id="g-okresy" class="graf"></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Nové za posledních 7 dní – úřední desky</h2><div id="nove-desky" class="seznam"></div></div>
+        <div class="karta"><h2>Změny v dražbách a nabídkách (7 dní)</h2><div id="nove-zmeny" class="seznam"></div></div>
+      </div>
+    </section>
+
+    <!-- MAPA -->
+    <section id="z-mapa" class="zalozka" hidden>
+      <div class="filtry">
+        <label><input type="checkbox" id="v-nabidky" checked> <i class="tecka s1"></i> Dražby a nabídky</label>
+        <label><input type="checkbox" id="v-desky" checked> <i class="tecka s2"></i> Úřední desky</label>
+        <label><input type="checkbox" id="v-up" checked> <i class="tecka s3"></i> Změny územních plánů</label>
+        <label><input type="checkbox" id="m-aktivni" checked> jen aktivní nabídky</label>
+        <select id="m-typ"><option value="">všechny typy předmětů</option></select>
+        <select id="m-dtyp"><option value="">všechny typy dokumentů</option></select>
+        <select id="m-obdobi">
+          <option value="30">posledních 30 dní</option><option value="90" selected>posledních 90 dní</option>
+          <option value="365">poslední rok</option><option value="0">vše</option>
+        </select>
+        <span id="m-pocet" class="tlumene"></span>
+      </div>
+      <div id="mapa" class="mapa"></div>
+      <p class="tlumene poznamka">Poloha = střed katastrálního území (nebo obce, kde úřad sídlí), ne přesná parcela.</p>
+    </section>
+
+    <!-- NABÍDKY -->
+    <section id="z-nabidky" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="n-hledat" type="search" placeholder="Hledat (název, k.ú., prodávající)">
+        <select id="n-zdroj"><option value="">všechny zdroje</option></select>
+        <select id="n-stav"><option value="">všechny stavy</option></select>
+        <select id="n-typ"><option value="">všechny typy</option></select>
+        <select id="n-okres"><option value="">všechny okresy</option></select>
+        <label><input type="checkbox" id="n-aktivni"> jen aktivní</label>
+        <button id="n-csv" class="maly">Stáhnout CSV</button>
+        <span id="n-pocet" class="tlumene"></span>
+      </div>
+      <div class="tabulka-obal"><table id="t-nabidky"></table></div>
+    </section>
+
+    <!-- ÚŘEDNÍ DESKY -->
+    <section id="z-desky" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="d-hledat" type="search" placeholder="Hledat (název, deska, stavebník)">
+        <select id="d-typ"><option value="">všechny typy</option></select>
+        <select id="d-kraj"><option value="">všechny kraje</option></select>
+        <select id="d-obdobi">
+          <option value="7">7 dní</option><option value="30" selected>30 dní</option>
+          <option value="90">90 dní</option><option value="0">vše</option>
+        </select>
+        <label><input type="checkbox" id="d-hlucne"> i hlučné (soukromé stavby)</label>
+        <button id="d-csv" class="maly">Stáhnout CSV</button>
+        <span id="d-pocet" class="tlumene"></span>
+      </div>
+      <div class="tabulka-obal"><table id="t-desky"></table></div>
+    </section>
+
+    <!-- ÚZEMNÍ PLÁNY -->
+    <section id="z-up" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="u-hledat" type="search" placeholder="Hledat obec">
+        <select id="u-faze"><option value="">všechny fáze</option></select>
+        <select id="u-kraj"><option value="">všechny kraje</option></select>
+        <button id="u-csv" class="maly">Stáhnout CSV</button>
+        <span id="u-pocet" class="tlumene"></span>
+      </div>
+      <div class="tabulka-obal"><table id="t-up"></table></div>
+    </section>
+
+    <!-- STAV -->
+    <section id="z-stav" class="zalozka" hidden>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot eDesky – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-edesky"></table></div></div>
+        <div class="karta"><h2>Bot majetek – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-majetek"></table></div></div>
+      </div>
+    </section>
+  </main>
+  <div id="tooltip" class="tooltip" hidden></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

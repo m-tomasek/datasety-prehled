@@ -1,0 +1,122 @@
+:root {
+  --pozadi: #f4f4f2; --plocha: #fcfcfb; --text: #0b0b0b; --text2: #55554f; --tlum: #7a7a73;
+  --cara: #e2e2dd; --mrizka: #ececE8; --akcent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --chyba: #c62828;
+  --stin: 0 1px 2px rgba(0,0,0,.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pozadi: #121211; --plocha: #1a1a19; --text: #f0efec; --text2: #bdbcb6; --tlum: #8e8d87;
+    --cara: #2f2f2c; --mrizka: #262624; --akcent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --chyba: #ef5350; --stin: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --pozadi: #121211; --plocha: #1a1a19; --text: #f0efec; --text2: #bdbcb6; --tlum: #8e8d87;
+  --cara: #2f2f2c; --mrizka: #262624; --akcent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --chyba: #ef5350; --stin: none;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--pozadi); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--akcent); }
+h1 { font-size: 20px; margin: 0 0 6px; }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text2); }
+.tlumene { color: var(--tlum); font-size: 13px; }
+.chyba { color: var(--chyba); }
+[hidden] { display: none !important; }
+
+button, input, select {
+  font: inherit; color: var(--text); background: var(--plocha);
+  border: 1px solid var(--cara); border-radius: 6px; padding: 6px 10px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--akcent); }
+button[type=submit] { background: var(--akcent); border-color: var(--akcent); color: #fff; font-weight: 600; }
+.maly { padding: 4px 8px; font-size: 13px; }
+input[type=checkbox] { padding: 0; accent-color: var(--akcent); }
+
+/* zámek */
+.zamek { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.prihlaseni { width: 100%; max-width: 360px; display: grid; gap: 12px; }
+.radek { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text2); }
+
+/* rám */
+.hlavicka {
+  position: sticky; top: 0; z-index: 1000; background: var(--plocha); border-bottom: 1px solid var(--cara);
+  display: flex; align-items: center; gap: 16px; padding: 8px 16px; flex-wrap: wrap;
+}
+.nazev { font-weight: 700; }
+.zalozky { display: flex; gap: 2px; overflow-x: auto; flex: 1; min-width: 0; }
+.zalozky button { border: 0; background: none; border-radius: 6px; white-space: nowrap; color: var(--text2); }
+.zalozky button.aktivni { background: var(--pozadi); color: var(--text); font-weight: 600; }
+.vpravo { display: flex; gap: 10px; align-items: center; }
+main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+
+.karta { background: var(--plocha); border: 1px solid var(--cara); border-radius: 10px; padding: 14px; box-shadow: var(--stin); min-width: 0; }
+.mrizka2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 900px) { .mrizka2 { grid-template-columns: 1fr; } }
+
+.dlazdice { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.dlazdice .karta { padding: 12px 14px; }
+.dl-cislo { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dl-popis { color: var(--text2); font-size: 13px; }
+.dl-pod { color: var(--tlum); font-size: 12px; }
+
+/* grafy */
+.graf { width: 100%; }
+.graf svg { display: block; width: 100%; height: auto; overflow: visible; }
+.graf text { fill: var(--tlum); font-size: 11px; }
+.graf .osa { stroke: var(--cara); }
+.graf .mriz { stroke: var(--mrizka); }
+.graf .sl { fill: var(--s1); }
+.graf .sl:hover, .graf .sl.hover { opacity: .8; }
+.graf .hodnota { fill: var(--text2); }
+.tooltip {
+  position: fixed; z-index: 2000; pointer-events: none; background: var(--plocha); color: var(--text);
+  border: 1px solid var(--cara); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+
+/* seznamy */
+.seznam { display: grid; gap: 6px; max-height: 420px; overflow: auto; }
+.polozka { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--cara); }
+.polozka:last-child { border-bottom: 0; }
+.polozka .meta { grid-column: 2; color: var(--tlum); font-size: 12px; }
+
+.stitek { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--pozadi); border: 1px solid var(--cara); color: var(--text2); white-space: nowrap; }
+.stitek.ok { border-color: var(--s3); }
+.tecka { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; }
+.tecka.s1 { background: var(--s1); } .tecka.s2 { background: var(--s2); } .tecka.s3 { background: var(--s3); }
+
+/* filtry + tabulky */
+.filtry { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.filtry label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.filtry input[type=search] { min-width: 240px; flex: 1; max-width: 420px; }
+@media (max-width: 600px) { .filtry input[type=search] { min-width: 0; width: 100%; max-width: none; } }
+
+.tabulka-obal { overflow: auto; max-height: calc(100vh - 190px); background: var(--plocha); border: 1px solid var(--cara); border-radius: 10px; }
+.karta .tabulka-obal { border: 0; max-height: none; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--cara); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--plocha); color: var(--text2); font-weight: 600; cursor: pointer; white-space: nowrap; user-select: none; }
+th.cis, td.cis { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.nazev-bunka { min-width: 260px; max-width: 520px; }
+tbody tr:hover { background: var(--pozadi); }
+.vice { text-align: center; padding: 10px; }
+
+/* mapa */
+.mapa { height: calc(100vh - 210px); min-height: 420px; border-radius: 10px; border: 1px solid var(--cara); }
+.poznamka { margin: 6px 0 0; }
+.leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; max-height: 320px; overflow: auto; min-width: 240px; }
+.leaflet-popup-content h3 { margin: 0 0 6px; font-size: 14px; }
+.leaflet-popup-content .pp { padding: 4px 0; border-top: 1px solid #e5e5e0; }
+.znacka { border-radius: 50%; border: 2px solid var(--plocha); width: 14px !important; height: 14px !important; margin: -7px 0 0 -7px !important; }
+.znacka.s1 { background: var(--s1); } .znacka.s2 { background: var(--s2); } .znacka.s3 { background: var(--s3); }
+.shluk { border-radius: 50%; color: #fff; font-weight: 700; font-size: 12px; display: grid; place-items: center; border: 2px solid var(--plocha); }
+.shluk.s1 { background: var(--s1); } .shluk.s2 { background: var(--s2); } .shluk.s3 { background: var(--s3); }
+.leaflet-container { background: var(--pozadi); }
+:root[data-tmava] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }

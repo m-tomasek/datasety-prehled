@@ -894,11 +894,12 @@ function detailZakazky(klic) {
 /* ------------------------------------------------------------------ CENY (srovnání) */
 function vysledkyCen() {
   const ka = $("#c-kategorie").value, k = $("#c-kraj").value, dny = +$("#c-obdobi").value, od = dny ? predDny(dny) : "";
+  const doDne = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);   // chybná data v budoucnosti pryč
   const z = D.zakazky.filter((x) => x.cb && x.v && (!ka || (x.kat || "").split("; ").includes(ka)) && (!k || x.kr === k) && (!od || (x.ds || x.dz) >= od))
     .map((x) => ({ d: x.ds || x.dz, ob: x.zd, oi: x.zi, do: x.v, di: x.vi, p: x.n + (x.c ? " – " + x.c : ""), h: x.cb, kat: x.kat, kr: x.kr, u: x.u, pn: x.pn, zdroj: "zakázka", k: x.k }));
   const s = D.smlouvy.filter((x) => (x.h || x.hs) && (!ka || (x.kat || "").split("; ").includes(ka)) && (!k || x.kr === k) && (!od || x.d >= od))
     .map((x) => ({ ...x, h: x.h || Math.round(x.hs / 1.21), zdroj: "registr smluv" }));
-  return [...z, ...s];
+  return [...z, ...s].filter((x) => !x.d || x.d <= doDne);
 }
 function kresliCeny() {
   const r = vysledkyCen(), ceny = r.map((x) => x.h);
@@ -912,7 +913,7 @@ function kresliCeny() {
   ].map(([c, p, s]) => `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
   // vítězové
   const m = new Map();
-  for (const x of r) { const k = x.di || x.do; if (!m.has(k)) m.set(k, { n: x.do, i: x.di, c: 0, s: 0, ceny: [] }); const a = m.get(k); a.c++; a.s += x.h; a.ceny.push(x.h); }
+  for (const x of r) { if (!x.di) continue; const k = x.di; if (!m.has(k)) m.set(k, { n: x.do, i: x.di, c: 0, s: 0, ceny: [] }); const a = m.get(k); a.c++; a.s += x.h; a.ceny.push(x.h); }
   const vit = [...m.values()].sort((a, b) => b.c - a.c || b.s - a.s).slice(0, 40);
   $("#t-vitezove").innerHTML = `<thead><tr><th>Dodavatel</th><th class="cis">Počet</th><th class="cis">Medián ceny</th><th class="cis">Celkem</th></tr></thead><tbody>` +
     vit.map((v) => `<tr><td>${esc(v.n)}${v.i ? `<div class="tlumene">IČO ${esc(v.i)}</div>` : ""}</td><td class="cis">${v.c}</td><td class="cis">${kcKratce(median(v.ceny))}</td><td class="cis">${kcKratce(v.s)}</td></tr>`).join("") + "</tbody>";

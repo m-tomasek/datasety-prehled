@@ -1,11 +1,14 @@
 name: Stránka
 
 # Složí stránku z kódu (větev main) a šifrovaných dat (větev data, posílá je repozitář datasety)
-# a zveřejní ji na GitHub Pages. Spouští se při každé nové dávce dat i při změně kódu.
+# a zveřejní ji na GitHub Pages. Spouští se při změně kódu a každých 10 minut kontroluje, jestli
+# nepřišla nová data (push do větve „data“ sám workflow nespustí, protože ta větev workflow neobsahuje).
 
 on:
   push:
-    branches: [main, data]
+    branches: [main]
+  schedule:
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -24,22 +27,42 @@ jobs:
       name: github-pages
       url: ${{ steps.nasazeni.outputs.page_url }}
     steps:
+      - name: Jsou nová data?
+        id: nova
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          data=$(gh api repos/${{ github.repository }}/commits/data --jq .sha)
+          echo "data=$data" >> "$GITHUB_OUTPUT"
+          nasazeno=$(curl -s "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/verze.txt?t=$(date +%s)" || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$nasazeno" = "$data" ]; then
+            echo "Data se nezměnila."; echo "nasadit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "nasadit=1" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.nova.outputs.nasadit == '1'
         with:
           ref: main
           path: web
       - uses: actions/checkout@v4
+        if: steps.nova.outputs.nasadit == '1'
         with:
           ref: data
           path: data
       - name: Složení
+        if: steps.nova.outputs.nasadit == '1'
         run: |
           mkdir -p site
           cp web/index.html web/app.js web/styl.css web/.nojekyll site/
           cp data/data.enc data/info.json site/
+          echo -n "${{ steps.nova.outputs.data }}" > site/verze.txt
       - uses: actions/configure-pages@v5
+        if: steps.nova.outputs.nasadit == '1'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.nova.outputs.nasadit == '1'
         with:
           path: site
       - id: nasazeni
+        if: steps.nova.outputs.nasadit == '1'
         uses: actions/deploy-pages@v4

@@ -96,7 +96,7 @@ main { padding: 16px; max-width: 1500px; margin: 0 auto; }
 .filtry { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .filtry label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
 .filtry input[type=search] { min-width: 240px; flex: 1; max-width: 420px; }
-@media (max-width: 600px) { .filtry input[type=search] { min-width: 0; width: 100%; max-width: none; } }
+@media (max-width: 600px) { .filtry input[type=search] { min-width: 0; flex: 1 1 100%; max-width: none; } }
 
 .tabulka-obal { overflow: auto; max-height: calc(100vh - 190px); background: var(--plocha); border: 1px solid var(--cara); border-radius: 10px; }
 .karta .tabulka-obal { border: 0; max-height: none; }

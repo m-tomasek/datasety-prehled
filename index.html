@@ -28,11 +28,18 @@
     <nav id="zalozky" class="zalozky" role="tablist">
       <button data-z="prehled" class="aktivni">Přehled</button>
       <button data-z="mapa">Mapa</button>
+      <button data-z="zamery">Stavby</button>
+      <button data-z="up">Územní plány</button>
+      <button data-z="zakazky">Zakázky</button>
+      <button data-z="ceny">Ceny</button>
+      <button data-z="tipy">Tipy na klienty</button>
       <button data-z="nabidky">Dražby a nabídky</button>
       <button data-z="desky">Úřední desky</button>
-      <button data-z="up">Územní plány</button>
+      <button data-z="kalendar">Kalendář</button>
       <button data-z="stav">Stav botů</button>
     </nav>
+    <label class="cinnost-volba" title="Zobrazí jen příležitosti, kde bude potřeba vybraná činnost">Hledám práci pro
+      <select id="cinnost"><option value="">všechny činnosti</option></select></label>
     <div class="vpravo"><span id="stari" class="tlumene"></span><button id="odhlasit" class="maly">Zamknout</button></div>
   </header>
 
@@ -44,6 +51,9 @@
         <div class="karta"><h2>Dokumenty z úředních desek po týdnech</h2><div id="g-tydny" class="graf"></div></div>
         <div class="karta"><h2>Aktivní nabídky podle okresu (prvních 15)</h2><div id="g-okresy" class="graf"></div></div>
       </div>
+      <div class="karta odsazeni"><h2>Místa s nejvíce signály (posledních 180 dní)</h2>
+        <p class="tlumene">Počet signálů na obec: změny ÚP, stavby, prodeje a dražby, zakázky, body zastupitelstev. Kliknutím otevřete přehled obce.</p>
+        <div class="tabulka-obal nizka"><table id="t-mista"></table></div></div>
       <div class="mrizka2">
         <div class="karta"><h2>Nové za posledních 7 dní – úřední desky</h2><div id="nove-desky" class="seznam"></div></div>
         <div class="karta"><h2>Změny v dražbách a nabídkách (7 dní)</h2><div id="nove-zmeny" class="seznam"></div></div>
@@ -56,6 +66,8 @@
         <label><input type="checkbox" id="v-nabidky" checked> <i class="tecka s1"></i> Dražby a nabídky</label>
         <label><input type="checkbox" id="v-desky" checked> <i class="tecka s2"></i> Úřední desky</label>
         <label><input type="checkbox" id="v-up" checked> <i class="tecka s3"></i> Změny územních plánů</label>
+        <label><input type="checkbox" id="v-zamery" checked> <i class="tecka s4"></i> Stavby (řízení, povolení, kolaudace)</label>
+        <label><input type="checkbox" id="v-zakazky"> <i class="tecka s5"></i> Zakázky</label>
         <label><input type="checkbox" id="m-aktivni" checked> jen aktivní nabídky</label>
         <select id="m-typ"><option value="">všechny typy předmětů</option></select>
         <select id="m-dtyp"><option value="">všechny typy dokumentů</option></select>
@@ -94,7 +106,7 @@
           <option value="7">7 dní</option><option value="30" selected>30 dní</option>
           <option value="90">90 dní</option><option value="0">vše</option>
         </select>
-        <label><input type="checkbox" id="d-hlucne"> i hlučné (soukromé stavby)</label>
+        <label><input type="checkbox" id="d-hlucne" checked> i soukromé stavby</label>
         <button id="d-csv" class="maly">Stáhnout CSV</button>
         <span id="d-pocet" class="tlumene"></span>
       </div>
@@ -106,11 +118,117 @@
       <div class="filtry">
         <input id="u-hledat" type="search" placeholder="Hledat obec">
         <select id="u-faze"><option value="">všechny fáze</option></select>
+        <select id="u-stav"><option value="">všechny stavy</option></select>
+        <select id="u-plochy"><option value="">všechny druhy ploch</option></select>
+        <label><input type="checkbox" id="u-vlastnik"> jen na návrh vlastníka</label>
         <select id="u-kraj"><option value="">všechny kraje</option></select>
         <button id="u-csv" class="maly">Stáhnout CSV</button>
         <span id="u-pocet" class="tlumene"></span>
       </div>
+      <p class="tlumene poznamka-nad">Klikněte na řádek: časová osa změny, obvyklé délky fází, obsah, dokumenty a vše ostatní v obci včetně údajů z celostátní evidence ÚP (ÚÚR).</p>
       <div class="tabulka-obal"><table id="t-up"></table></div>
+      <div class="karta odsazeni"><h2>Obce a jejich územní plány (celostátní evidence ÚÚR)</h2>
+        <div class="filtry">
+          <select id="o-kraj"><option value="">všechny kraje</option></select>
+          <select id="o-filtr">
+            <option value="">všechny obce</option>
+            <option value="stary">plán podle zákona před 2007 (ÚPO, ÚPN SÚ)</option>
+            <option value="zprava">4 roky od poslední zprávy / účinnosti už uplynuly</option>
+            <option value="stari15">plán starší než 15 let</option>
+            <option value="bez">bez platného územního plánu</option>
+            <option value="rozprac">rozpracovaný nový územní plán</option>
+          </select>
+          <span id="o-pocet" class="tlumene"></span>
+        </div>
+        <div class="mrizka2">
+          <div class="tabulka-obal nizka"><table id="t-obce-up"></table></div>
+          <div><h3 class="mezinadpis">Kdo zpracovává územní plány (zhotovitelé platných ÚP)</h3>
+            <div class="tabulka-obal nizka"><table id="t-zhotovitele"></table></div></div>
+        </div>
+      </div>
+      <div class="karta odsazeni"><h2>Nové v celostátní evidenci územních plánů (180 dní)</h2>
+        <p class="tlumene">Změny, které obce nahlásily do evidence ÚÚR (často dřív, než se objeví na úřední desce).</p>
+        <div class="tabulka-obal nizka"><table id="t-up-evidence"></table></div></div>
+    </section>
+
+    <!-- STAVBY -->
+    <section id="z-zamery" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="s-hledat" type="search" placeholder="Hledat (název, k.ú., stavebník, IČO)">
+        <select id="s-faze"><option value="">všechny fáze</option></select>
+        <select id="s-druh"><option value="">všechny druhy staveb</option></select>
+        <select id="s-stavebnik"><option value="">všichni stavebníci</option><option value="firma">firmy</option>
+          <option value="verejny">veřejný sektor</option><option value="soukroma">soukromé osoby (RD apod.)</option></select>
+        <select id="s-kraj"><option value="">všechny kraje</option></select>
+        <select id="s-obdobi"><option value="30">30 dní</option><option value="90" selected>90 dní</option>
+          <option value="365">rok</option><option value="0">vše</option></select>
+        <select id="s-velikost"><option value="0">jakákoli velikost</option><option value="1000000">od 1 mil. Kč</option>
+          <option value="10000000">od 10 mil. Kč</option><option value="50000000">od 50 mil. Kč</option></select>
+        <button id="s-csv" class="maly">Stáhnout CSV</button>
+        <span id="s-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Odhad ceny = obestavěný prostor × cenový ukazatel druhu stavby (ukazatele 2026, ±25 %). Honorář orientačně. Ukazatele jdou upravit v souboru prehled/cenove_ukazatele.csv.</p>
+      <div class="tabulka-obal"><table id="t-zamery"></table></div>
+    </section>
+
+    <!-- ZAKÁZKY -->
+    <section id="z-zakazky" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="k-hledat" type="search" placeholder="Hledat (název, zadavatel, dodavatel, IČO)">
+        <select id="k-kategorie"><option value="">všechny kategorie</option></select>
+        <select id="k-stav"><option value="">všechny stavy</option></select>
+        <select id="k-kraj"><option value="">všechny kraje</option></select>
+        <select id="k-druh"><option value="">všechny druhy řízení</option></select>
+        <label><input type="checkbox" id="k-otevrene"> jen s běžící lhůtou</label>
+        <button id="k-csv" class="maly">Stáhnout CSV</button>
+        <span id="k-pocet" class="tlumene"></span>
+      </div>
+      <div class="tabulka-obal"><table id="t-zakazky"></table></div>
+    </section>
+
+    <!-- CENY -->
+    <section id="z-ceny" class="zalozka" hidden>
+      <div class="filtry">
+        <select id="c-kategorie"><option value="">všechny kategorie</option></select>
+        <select id="c-kraj"><option value="">všechny kraje</option></select>
+        <select id="c-obdobi"><option value="365">poslední rok</option><option value="730" selected>2 roky</option><option value="0">vše</option></select>
+        <span id="c-pocet" class="tlumene"></span>
+      </div>
+      <div id="c-souhrn" class="dlazdice"></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Kdo vyhrává (podle počtu zakázek)</h2><div class="tabulka-obal nizka"><table id="t-vitezove"></table></div></div>
+        <div class="karta"><h2>Rozložení cen (smluvní cena bez DPH)</h2><div id="g-ceny" class="graf"></div></div>
+      </div>
+      <div class="karta"><h2>Jednotlivé zakázky s výsledkem</h2><div class="tabulka-obal nizka"><table id="t-vysledky"></table></div></div>
+    </section>
+
+    <!-- TIPY -->
+    <section id="z-tipy" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="t-hledat" type="search" placeholder="Hledat (název, IČO, obec)">
+        <select id="t-segment"><option value="">všechny segmenty</option></select>
+        <select id="t-signal"><option value="">všechny signály</option></select>
+        <select id="t-kraj"><option value="">všechny kraje</option></select>
+        <select id="t-velikost"><option value="">jakákoli velikost</option></select>
+        <button id="t-csv" class="maly">Stáhnout CSV</button>
+        <span id="t-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Firmy a organizace z veřejných rejstříků, u kterých se sešly signály, že budou řešit stavbu, rekonstrukci nebo energetiku. Proč je firma v seznamu, říká sloupec Signály. Metodika je v souboru boti/firmy/README.md.</p>
+      <div class="tabulka-obal"><table id="t-tipy"></table></div>
+    </section>
+
+    <!-- KALENDÁŘ -->
+    <section id="z-kalendar" class="zalozka" hidden>
+      <div class="filtry">
+        <label><input type="checkbox" id="kal-vyzvy" checked> lhůty výzev a zakázek</label>
+        <label><input type="checkbox" id="kal-up" checked> projednání územních plánů</label>
+        <label><input type="checkbox" id="kal-drazby" checked> dražby a aukce</label>
+        <label><input type="checkbox" id="kal-prodeje" checked> lhůty prodejů obcí</label>
+        <button id="kal-ics" class="maly">Stáhnout do kalendáře (.ics)</button>
+        <span id="kal-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Soubor .ics otevřete v Outlooku (nebo Google kalendáři) a události se přidají. Exportují se jen vyfiltrované události.</p>
+      <div class="tabulka-obal"><table id="t-kalendar"></table></div>
     </section>
 
     <!-- STAV -->
@@ -119,9 +237,20 @@
         <div class="karta"><h2>Bot eDesky – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-edesky"></table></div></div>
         <div class="karta"><h2>Bot majetek – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-majetek"></table></div></div>
       </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot zakázky – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-zakazky"></table></div></div>
+        <div class="karta"><h2>Bot evidence ÚP – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-upd"></table></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot tipy na klienty – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-firmy"></table></div></div>
+      </div>
     </section>
   </main>
   <div id="tooltip" class="tooltip" hidden></div>
+  <aside id="panel" class="panel" hidden>
+    <button id="panel-zavrit" class="maly panel-zavrit" aria-label="Zavřít">Zavřít ✕</button>
+    <div id="panel-obsah"></div>
+  </aside>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

@@ -34,6 +34,7 @@
       <button data-z="zakazky">Zakázky</button>
       <button data-z="ceny">Ceny</button>
       <button data-z="trh">Trh a konkurence</button>
+      <button data-z="projekty">Projekty a EIA</button>
       <button data-z="tipy">Tipy na klienty</button>
       <button data-z="nabidky">Dražby a nabídky</button>
       <button data-z="desky">Úřední desky</button>
@@ -48,6 +49,10 @@
   <main>
     <!-- PŘEHLED -->
     <section id="z-prehled" class="zalozka">
+      <div class="mrizka2">
+        <div class="karta"><h2>Lhůty a termíny do 14 dní</h2><div id="tyden-lhuty" class="seznam"></div></div>
+        <div class="karta"><h2>Nové signály za 7 dní</h2><div id="tyden-signaly" class="seznam"></div></div>
+      </div>
       <div id="dlazdice" class="dlazdice"></div>
       <div class="mrizka2">
         <div class="karta"><h2>Dokumenty z úředních desek po týdnech</h2><div id="g-tydny" class="graf"></div></div>
@@ -88,6 +93,8 @@
         <label><input type="checkbox" id="v-up" checked> <i class="tecka s3"></i> Změny územních plánů</label>
         <label><input type="checkbox" id="v-zamery" checked> <i class="tecka s4"></i> Stavby (řízení, povolení, kolaudace)</label>
         <label><input type="checkbox" id="v-zakazky"> <i class="tecka s5"></i> Zakázky</label>
+        <label><input type="checkbox" id="v-eia"> <i class="tecka s6"></i> EIA a projekty z inzerce</label>
+        <label><input type="checkbox" id="v-mve"> <i class="tecka s7"></i> Vodní elektrárny</label>
         <label><input type="checkbox" id="m-aktivni" checked> jen aktivní nabídky</label>
         <select id="m-typ"><option value="">všechny typy předmětů</option></select>
         <select id="m-dtyp"><option value="">všechny typy dokumentů</option></select>
@@ -273,6 +280,54 @@
     </section>
 
     <!-- TIPY -->
+    <section id="z-projekty" class="zalozka" hidden>
+      <p class="tlumene poznamka-nad">Skutečné záznamy ze zdrojů, mechanicky roztříděné podle slov v textu (typ, fáze) – bez výkladu.
+        Projekty: Giełda OZE (PL), Bazoš (CZ), Investown (CZ crowdfunding), dražby. EIA: záměry v posuzování vlivů (CENIA).
+        Vodní elektrárny: licence ERÚ a inzeráty AHE ČR. Kandidáti: filtr kritérií nad EIA a úředními deskami.</p>
+      <div class="dlazdice" id="pj-dlazdice"></div>
+      <div class="karta odsazeni"><h2>Projekty – nabídky, poptávky, financování</h2>
+        <div class="filtry">
+          <input id="pj-hledat" type="search" placeholder="Hledat (název, popis, místo)">
+          <select id="pj-zeme"><option value="">všechny země</option></select>
+          <select id="pj-smer"><option value="">nabídky, poptávky i financování</option></select>
+          <select id="pj-typ"><option value="">všechny typy</option></select>
+          <select id="pj-faze"><option value="">všechny fáze</option></select>
+          <label><input type="checkbox" id="pj-aktivni" checked> jen aktivní</label>
+          <button id="pj-csv" class="maly">Stáhnout CSV</button>
+          <span id="pj-pocet" class="tlumene"></span>
+        </div>
+        <div class="tabulka-obal nizka"><table id="t-projekty"></table></div></div>
+      <div class="karta odsazeni"><h2>Záměry v posuzování vlivů (EIA)</h2>
+        <div class="filtry">
+          <input id="ea-hledat" type="search" placeholder="Hledat (název, oznamovatel, obec)">
+          <select id="ea-stav"><option value="">všechny stavy</option></select>
+          <select id="ea-kraj"><option value="">všechny kraje</option></select>
+          <label><input type="checkbox" id="ea-natura"> jen s Naturou</label>
+          <button id="ea-csv" class="maly">Stáhnout CSV</button>
+          <span id="ea-pocet" class="tlumene"></span>
+        </div>
+        <div class="tabulka-obal nizka"><table id="t-eia"></table></div></div>
+      <div class="karta odsazeni"><h2>Kandidáti – záměry s označenými kritérii profilu</h2>
+        <div class="filtry">
+          <input id="ak-hledat" type="search" placeholder="Hledat">
+          <select id="ak-model"><option value="">všechny typy záměru</option></select>
+          <select id="ak-min"><option value="2">aspoň 2 kritéria</option><option value="3">aspoň 3</option><option value="4">aspoň 4</option><option value="1">vše</option></select>
+          <span id="ak-pocet" class="tlumene"></span>
+        </div>
+        <div class="tabulka-obal nizka"><table id="t-aktiva"></table></div></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Vodní elektrárny na prodej a inzeráty</h2><div class="tabulka-obal nizka"><table id="t-mve-inz"></table></div></div>
+        <div class="karta"><h2>Vodní elektrárny s licencí ERÚ</h2>
+          <div class="filtry">
+            <input id="mv-hledat" type="search" placeholder="Hledat (název, tok, obec, držitel)">
+            <select id="mv-vel"><option value="">všechny velikosti</option></select>
+            <span id="mv-pocet" class="tlumene"></span>
+          </div>
+          <div class="tabulka-obal nizka"><table id="t-mve"></table></div></div>
+      </div>
+      <div class="karta odsazeni"><h2>Přehledy botů (čtení na pár minut)</h2><div id="pj-prehledy"></div></div>
+    </section>
+
     <section id="z-tipy" class="zalozka" hidden>
       <div class="filtry">
         <input id="t-hledat" type="search" placeholder="Hledat (název, IČO, obec)">
@@ -317,6 +372,14 @@
       </div>
       <div class="mrizka2">
         <div class="karta"><h2>Bot kontext (ČSÚ, příroda, záplavy, budovy, insolvence) – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-kontext"></table></div></div>
+        <div class="karta"><h2>Bot EIA – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-eia"></table></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot aktiva (filtr kandidátů) – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-aktiva"></table></div></div>
+        <div class="karta"><h2>Bot MVE – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-mve"></table></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot projekty – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-projekty"></table></div></div>
       </div>
     </section>
   </main>

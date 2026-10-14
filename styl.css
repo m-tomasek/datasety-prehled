@@ -1,7 +1,7 @@
 :root {
   --pozadi: #f4f4f2; --plocha: #fcfcfb; --text: #0b0b0b; --text2: #55554f; --tlum: #7a7a73;
   --cara: #e2e2dd; --mrizka: #ececE8; --akcent: #2a78d6;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --chyba: #c62828;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #7b61d1; --s7: #1a9fb5; --chyba: #c62828;
   --stin: 0 1px 2px rgba(0,0,0,.06);
   color-scheme: light;
 }
@@ -9,14 +9,14 @@
   :root:not([data-theme="light"]) {
     --pozadi: #121211; --plocha: #1a1a19; --text: #f0efec; --text2: #bdbcb6; --tlum: #8e8d87;
     --cara: #2f2f2c; --mrizka: #262624; --akcent: #3987e5;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --chyba: #ef5350; --stin: none;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #9580e3; --s7: #2bb3c9; --chyba: #ef5350; --stin: none;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --pozadi: #121211; --plocha: #1a1a19; --text: #f0efec; --text2: #bdbcb6; --tlum: #8e8d87;
   --cara: #2f2f2c; --mrizka: #262624; --akcent: #3987e5;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --chyba: #ef5350; --stin: none;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #9580e3; --s7: #2bb3c9; --chyba: #ef5350; --stin: none;
   color-scheme: dark;
 }
 
@@ -156,3 +156,18 @@ table.info td, table.info th { padding: 4px 6px; }
 /* dlouhé položky v rozbalovacích seznamech nesmí na mobilu rozšířit stránku */
 select { max-width: 100%; text-overflow: ellipsis; }
 .filtry select { min-width: 0; }
+
+/* vrstvy EIA + projekty (s6) a vodní elektrárny (s7) */
+.tecka.s6, .znacka.s6, .shluk.s6 { background: var(--s6); }
+.tecka.s7, .znacka.s7, .shluk.s7 { background: var(--s7); }
+.tecka.s7 { border-radius: 50% 50% 50% 0; }
+.znacka.s7 { border-radius: 50% 50% 50% 0; }
+
+/* přehledy botů (markdown) */
+.md { font-size: 13px; }
+.md details { border-top: 1px solid var(--cara); padding: 8px 0; }
+.md summary { cursor: pointer; font-weight: 600; }
+.md h3 { font-size: 14px; margin: 14px 0 6px; }
+.md h4 { font-size: 13px; margin: 12px 0 4px; color: var(--text2); }
+.md table { margin: 6px 0 10px; }
+.md .tabulka-obal { max-height: 360px; }

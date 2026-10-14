@@ -140,7 +140,14 @@ const POPISY = {
     zastupitelstvo_pd_bez_zakazky: "zastupitelstvo o PD, zakázka nevypsaná", nabidka_pod_cenou_okresu: "nabídka pod mediánem okresu",
     investor_vice_staveb: "investor s více stavbami", kolaudace_bytoveho_domu: "kolaudace bytového domu (+ nové SVJ)",
     stavba_a_priroda: "stavba v k.ú. s Naturou / ZCHÚ", kompenzacni_opatreni: "kompenzační opatření", prunik_zdroju: "průnik zdrojů",
+    eia_zamer: "záměr v EIA (nový / změna stavu)", mve_na_prodej: "vodní elektrárna na prodej", mve_zmena_drzitele: "vodní elektrárna – nový držitel licence",
+    projekt_financovani: "developerský projekt – crowdfunding", projekt_v_obci_se_zmenou_up: "projekt z inzerce v obci se změnou ÚP",
   },
+  smer: { nabidka: "nabídka", poptavka: "poptávka", financovani: "financování" },
+  zeme: { CZ: "Česko", SK: "Slovensko", PL: "Polsko" },
+  pzdroj: { gwz: "Giełda OZE", bazos: "Bazoš", nehn_kupa: "nehnutelnosti.sk", investown: "Investown", majetek: "dražby / stát" },
+  pfaze: { napad_lokalita: "lokalita / nápad", studie: "studie", uzemni: "územní rozhodnutí / ÚP", pripojeni: "připojení k síti",
+    projekt_dokumentace: "projektová dokumentace", povoleni: "povolení", rtb: "připraveno ke stavbě (RTB)", vystavba: "výstavba", v_provozu: "v provozu" },
 };
 const SIG_NAPOVEDA = {
   drazba_parcela_v_zmene_up: "Dražená / nabízená parcela je přímo uvedena ve změně územního plánu – nový vlastník bude řešit využití plochy.",
@@ -158,6 +165,11 @@ const SIG_NAPOVEDA = {
   stavba_a_priroda: "Stavba v katastru s Naturou 2000 nebo ZCHÚ – může být potřeba naturové hodnocení (§45i) nebo výjimka (§56) / souhlas (§67).",
   kompenzacni_opatreni: "Text dokumentu zmiňuje kompenzační / náhradní opatření (výsadby, biotopy).",
   prunik_zdroju: "Na stejné parcele nebo u stejného IČO se během 12 měsíců sešly dva a více různé druhy událostí.",
+  eia_zamer: "Záměr v IS EIA v běžícím řízení, nový nebo se změnou stavu za 120 dní (oznámeno v posledním roce); u záměru je případně stavba z úředních desek ve stejném k.ú.",
+  mve_na_prodej: "Inzerát prodeje vodní elektrárny nebo lokality (AHE ČR), spárovaný s licencí ERÚ ve stejné obci (výkon ±15 %), pokud to šlo.",
+  mve_zmena_drzitele: "Mezi verzemi seznamu ERÚ se změnil držitel licence vodní elektrárny (prodej či převod) – posledních 180 dní.",
+  projekt_financovani: "Developerský projekt financovaný přes crowdfunding (Investown) – investor staví, typicky potřebuje navazující dokumentaci a dozor.",
+  projekt_v_obci_se_zmenou_up: "Inzerát projektu nebo pozemku (rané fáze) v obci do 50 000 obyvatel, kde právě probíhá změna územního plánu.",
 };
 const pop = (skup, k) => (POPISY[skup] && POPISY[skup][k]) || (k ? String(k).replace(/_/g, " ") : "");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -178,6 +190,18 @@ function pripravData() {
   D.souvislosti = D.souvislosti || {}; D.kontext = D.kontext || {};
   for (const k of ["ceny_pozemku", "trh", "trendy", "pipeline", "navaznosti", "konkurence", "pruniky"]) D.souvislosti[k] = D.souvislosti[k] || [];
   for (const k of ["obce", "ku", "budovy", "insolvence"]) D.kontext[k] = D.kontext[k] || {};
+  for (const k of ["eia", "eia_zmeny", "projekty"]) D[k] = D[k] || [];
+  D.aktiva = D.aktiva || {}; D.mve = D.mve || {}; D.prehledy = D.prehledy || {};
+  for (const k of ["kandidati", "modely", "opakovane"]) D.aktiva[k] = D.aktiva[k] || [];
+  for (const k of ["vyrobny", "inzeraty", "zmeny", "zamery"]) D.mve[k] = D.mve[k] || [];
+  naplnVyber("#pj-zeme", D.projekty, "ze", "zeme");
+  naplnVyber("#pj-smer", D.projekty, "sm", "smer");
+  naplnVyber("#pj-typ", D.projekty, "t");
+  naplnVyber("#pj-faze", D.projekty, "nf", "pfaze");
+  naplnVyber("#ea-stav", D.eia, "s", "x");
+  naplnVyber("#ea-kraj", D.eia, "kr");
+  naplnVyber("#ak-model", D.aktiva.kandidati, "mo", "x");
+  naplnVyber("#mv-vel", D.mve.vyrobny, "vel", "x");
   KONK = new Map(D.souvislosti.konkurence.map((x) => [x.ico, x]));
   naplnVyber("#g-typ", D.signaly, "t", "sig");
   naplnVyber("#g-kraj", D.signaly, "kr");
@@ -239,7 +263,7 @@ function naplnVyberSignaly() {
 /* ------------------------------------------------------------------ „Hledám práci pro“ (navazující činnosti) */
 function naplnCinnosti() {
   const el = $("#cinnost"), puvodni = el.value || uloz.cti("prehled-cinnost") || "", pocty = new Map();
-  const vse = [...D.zamery, ...D.zmeny_up, ...D.dokumenty, ...D.nabidky];
+  const vse = [...D.zamery, ...D.zmeny_up, ...D.dokumenty, ...D.nabidky, ...D.eia, ...D.projekty];
   for (const x of vse) for (const c of (x.nc || "").split("; ")) if (c && !c.startsWith("dle ")) pocty.set(c, (pocty.get(c) || 0) + 1);
   for (const z of D.zakazky) for (const c of (z.kat || "").split("; ")) if (c) pocty.set(c, (pocty.get(c) || 0) + 1);
   el.innerHTML = el.options[0].outerHTML + [...pocty.keys()].sort((a, b) => a.localeCompare(b, "cs"))
@@ -287,7 +311,7 @@ $("#zalozky").addEventListener("click", (e) => {
 const KRESLI = {
   prehled: kresliPrehled, mapa: kresliMapu, nabidky: kresliNabidky, desky: kresliDesky, up: kresliUp, stav: kresliStav,
   zamery: kresliZamery, zakazky: kresliZakazky, ceny: kresliCeny, tipy: kresliTipy, kalendar: kresliKalendar,
-  signaly: kresliSignaly, trh: kresliTrh,
+  signaly: kresliSignaly, trh: kresliTrh, projekty: kresliProjekty,
 };
 function vykresliZalozku() { KRESLI[ZALOZKA](); vykreslene.add(ZALOZKA); }
 function vykresliVse(obnova) {
@@ -384,6 +408,8 @@ function kresliPrehled() {
     [cislo(aktivni.length), "aktivních nabídek a dražeb", `z toho ${cislo(drazby.length)} dražeb`],
     [cislo(nove7.length), "nově zveřejněných nabídek za 7 dní", ""],
     [cislo(D.tipy.length), "tipů na klienty", D.tipy.length ? `${cislo(D.tipy.filter((x) => x.ps >= 2).length)} s více signály` : "bot zatím neběžel"],
+    [cislo((D.projekty || []).filter((x) => x.pz >= t7).length + (D.eia || []).filter((x) => (x.pzm || x.pz) >= t7).length),
+      "nových projektů a změn EIA za 7 dní", `${cislo((D.projekty || []).filter((x) => x.ze === "CZ" && x.a).length)} aktivních projektů v ČR`],
   ];
   $("#dlazdice").innerHTML = dl.map(([c, p, s]) =>
     `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
@@ -400,6 +426,17 @@ function kresliPrehled() {
   grafVodorovne($("#g-okresy"), [...okr].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([l, v]) => ({ l, v })), "aktivních nabídek");
 
   kresliMista();
+  const do14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const lhuty = udalostiKalendare().filter((e) => e.d <= do14).slice(0, 40);
+  $("#tyden-lhuty").innerHTML = lhuty.length ? lhuty.map((e) => `<div class="polozka"><span class="stitek">${esc(e.typ)}</span><div>${odkaz(e.u, e.n)}</div>
+    <div class="meta"><b>${datum(e.d)}${e.cas ? " " + esc(e.cas) : ""}</b> · ${esc(e.kde || "")}</div></div>`).join("")
+    : '<p class="tlumene">Do 14 dní žádné lhůty (podle filtru „Hledám práci pro“).</p>';
+  const sig7 = D.signaly.filter((x) => x.pz >= t7).sort((a, b) => (b.d > a.d ? 1 : -1));
+  const druhy = new Map(); for (const x of sig7) druhy.set(x.t, (druhy.get(x.t) || 0) + 1);
+  $("#tyden-signaly").innerHTML = sig7.length ? `<div class="tlumene">${[...druhy].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${esc(pop("sig", t))} ${n}×`).join(" · ")}</div>` +
+    sig7.slice(0, 30).map((x) => `<div class="polozka"><span class="stitek">${esc(pop("sig", x.t))}</span><div>${odkaz(x.u, x.p.slice(0, 160))}</div>
+    <div class="meta">${odkazObce(x.o, x.on)}${x.kr ? " · " + esc(x.kr) : ""} · ${datum(x.d)}</div></div>`).join("")
+    : '<p class="tlumene">Za 7 dní nic nového.</p>';
   const dokSer = dok7.filter((x) => cinnostSedi(x)).sort((a, b) => (b.dt > a.dt ? 1 : -1)).slice(0, 80);
   $("#nove-desky").innerHTML = dokSer.length ? dokSer.map((x) =>
     `<div class="polozka"><span class="stitek">${esc(pop("dtyp", x.t))}</span><div>${odkaz(x.u, x.n)}</div>
@@ -544,7 +581,7 @@ function kresliStav() {
   };
   tab($("#t-beh-edesky"), D.behy.edesky || []);
   tab($("#t-beh-majetek"), D.behy.majetek || []);
-  for (const b of ["zakazky", "upd", "firmy", "souvislosti", "kontext"]) tab($("#t-beh-" + b), D.behy[b] || []);
+  for (const b of ["zakazky", "upd", "firmy", "souvislosti", "kontext", "eia", "aktiva", "mve", "projekty"]) tab($("#t-beh-" + b), D.behy[b] || []);
 }
 
 /* ------------------------------------------------------------------ MAPA */
@@ -576,7 +613,7 @@ function kresliMapu() {
       maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(MAPA);
     if (tmava()) document.documentElement.setAttribute("data-tmava", "");
-    napoj(["#v-nabidky", "#v-desky", "#v-up", "#v-zamery", "#v-zakazky", "#m-aktivni", "#m-typ", "#m-dtyp", "#m-obdobi"], kresliMapu);
+    napoj(["#v-nabidky", "#v-desky", "#v-up", "#v-zamery", "#v-zakazky", "#v-eia", "#v-mve", "#m-aktivni", "#m-typ", "#m-dtyp", "#m-obdobi"], kresliMapu);
   }
   setTimeout(() => MAPA.invalidateSize(), 0);
   Object.values(VRSTVY).forEach((v) => MAPA.removeLayer(v));
@@ -632,6 +669,17 @@ function kresliMapu() {
     const r = D.zakazky.filter((x) => (!od || (x.dz || x.pz) >= od) && cinnostSedi(x));
     VRSTVY.k = vrstva("s5", r, "zakázky", (x) =>
       `${odkaz(x.u, x.n)}<br><span style="opacity:.75">${esc(x.zd)} · ${esc(x.s)}${x.lh ? " · lhůta " + datum(x.lh) : ""}${x.cb ? " · " + kc(x.cb) : ""}</span>`);
+  }
+  if ($("#v-eia").checked) {
+    const r = [...D.eia.filter((x) => (!od || (x.pzm || x.do || x.pz) >= od) && cinnostSedi(x)).map((x) => ({ ...x, _druh: "eia" })),
+      ...D.projekty.filter((x) => x.m && x.a && (!od || x.pz >= od) && cinnostSedi(x)).map((x) => ({ ...x, _druh: "pj" }))];
+    VRSTVY.e = vrstva("s6", r, "EIA a projekty", (x) => x._druh === "eia"
+      ? `<b>EIA</b> ${odkaz(x.u, x.n)}<br><span style="opacity:.75">${esc(x.s)}${x.o ? " · " + esc(x.o) : ""}${x.do ? " · " + datum(x.do) : ""}</span>`
+      : `<b>${esc(pop("smer", x.sm))}</b> ${odkaz(x.u, x.n)}<br><span style="opacity:.75">${esc(pop("pzdroj", x.z))} · ${esc(String(x.t || "").replace(/_/g, " "))}${x.nf ? " · " + esc(pop("pfaze", x.nf)) : ""}${x.c ? " · " + cislo(x.c) + " " + esc(x.me || "Kč") : ""}</span>`);
+  }
+  if ($("#v-mve").checked) {
+    VRSTVY.v = vrstva("s7", D.mve.vyrobny, "vodní elektrárny", (x) =>
+      `<b>${esc(x.n || "MVE")}</b> · ${cislo(x.kw)} kW${x.tok ? " · " + esc(x.tok) : ""}<br><span style="opacity:.75">${esc(x.dr || (x.dt === "fyzicka_osoba" ? "fyzická osoba" : ""))}${x.dz ? " · od " + datum(x.dz) : ""}</span>`);
   }
   $("#m-pocet").textContent = `${cislo(celkem)} na mapě` + (bezMista ? ` · ${cislo(bezMista)} bez polohy` : "");
 }
@@ -811,6 +859,7 @@ function profilObce(kod) {
   const sml = D.smlouvy.filter((s) => zak.some((z) => z.zi === s.oi)).slice(0, 20);
   const us = D.studie.filter((x) => x.o === kod), zev = D.zmeny_ev[kod] || [], fo = D.firmy_obce[kod] || {};
   const pro = D.prodeje.filter(vObci).slice(0, 30), sig = D.signaly.filter((x) => x.o === kod);
+  const eia = D.eia.filter(vObci), pj = D.projekty.filter(vObci), mve = D.mve.vyrobny.filter(vObci);
   otevriPanel(`<h2>${esc(jmeno)}</h2><p class="tlumene">kód obce ${esc(kod)}${ev && ev.kr ? " · " + esc(ev.kr) : ""}</p>
     ${panelKontextObce(kod)}
     ${signalyHtml(sig, "Signály v obci")}
@@ -826,6 +875,9 @@ function profilObce(kod) {
     <h3>Aktivní nabídky a dražby (${nab.length})</h3>${nab.slice(0, 20).map((r) => `<div class="pp"><a href="#" data-nabidka="${esc(r.k)}">${esc(r.n)}</a>${stitkyNabidky(r)} · ${esc(pop("stav", r.s))}${r.cv ? " · " + kcKratce(r.cv) : ""}</div>`).join("") || '<p class="tlumene">—</p>'}
     ${pro.length ? `<h3>Prodeje a dražby obce – parcely (${pro.length})</h3>${pro.map((x) => `<div class="pp">${datum(x.d)} · ${odkaz(x.u, (x.par || x.ku || "parcela"))} · ${esc(x.dr)}${x.v ? " · " + cislo(x.v) + " m²" : ""}${x.cm ? " · " + cislo(x.cm) + " Kč/m²" : ""}</div>`).join("")}` : ""}
     ${Object.keys(fo).length ? `<h3>Firmy a organizace se sídlem v obci (podle segmentu)</h3>${tabInfo(Object.entries(fo).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => radekInfo(k, cislo(v))))}` : ""}
+    ${eia.length ? `<h3>Záměry v EIA (${eia.length})</h3>${eia.slice(0, 20).map(radekEia).join("")}` : ""}
+    ${pj.length ? `<h3>Projekty z inzerce a crowdfundingu (${pj.length})</h3>${pj.slice(0, 20).map(radekProjektu).join("")}` : ""}
+    ${mve.length ? `<h3>Vodní elektrárny s licencí (${mve.length})</h3>${mve.slice(0, 20).map(radekMve).join("")}` : ""}
     <h3>Tipy na klienty se sídlem v obci (${tipy.length})</h3>${tipy.slice(0, 20).map((t) => `<div class="pp"><a href="#" data-firma="${esc(t.i)}">${esc(t.n)}</a> · ${esc(t.sg)}<div class="tlumene">${esc(t.si)}</div></div>`).join("") || '<p class="tlumene">—</p>'}`);
 }
 
@@ -1018,7 +1070,9 @@ function profilFirmy(ico) {
   const t = D.tipy.find((x) => x.i === ico), inv = D.investori[ico];
   const zam = D.zamery.filter((x) => x.si === ico), zak = D.zakazky.filter((x) => x.zi === ico || x.vi === ico);
   const sml = D.smlouvy.filter((x) => x.di === ico || x.oi === ico).slice(0, 30);
-  const nazev = (t && t.n) || (inv && inv.n) || (zak[0] && (zak[0].zi === ico ? zak[0].zd : zak[0].v)) || ico;
+  const eia = D.eia.filter((x) => x.oi === ico), mve = D.mve.vyrobny.filter((x) => x.di === ico);
+  const kand = D.aktiva.kandidati.filter((x) => x.oi === ico);
+  const nazev = (t && t.n) || (inv && inv.n) || (zak[0] && (zak[0].zi === ico ? zak[0].zd : zak[0].v)) || (eia[0] && eia[0].o) || (mve[0] && mve[0].dr) || ico;
   otevriPanel(`<h2>${esc(nazev)}</h2><p class="tlumene">IČO ${esc(ico)} · <a href="https://ares.gov.cz/ekonomicke-subjekty?ico=${esc(ico)}" target="_blank" rel="noopener">ARES</a> · <a href="https://or.justice.cz/ias/ui/rejstrik-$firma?ico=${esc(ico)}" target="_blank" rel="noopener">obchodní rejstřík</a></p>
     ${t ? tabInfo([radekInfo("Segment", esc(t.sg)), radekInfo("Zaměstnanci", esc(t.zam)), radekInfo("Sídlo", odkazObce(obecZMista(t.m), t.ob) + ", " + esc(t.kr)),
       radekInfo("Vznik", datum(t.dv)), radekInfo("CZ-NACE", esc(t.nace)), radekInfo("Signály", (t.si || "").split(" | ").map(esc).join("<br>")),
@@ -1027,6 +1081,9 @@ function profilFirmy(ico) {
     ${zam.length ? `<h3>Stavby, kde je stavebníkem (${zam.length})</h3>${zam.map((x) => `<div class="pp"><a href="#" data-zamer="${esc(x.k)}">${esc(x.n)}</a> · ${esc(pop("zfaze", x.f))} ${datum(x.df)}</div>`).join("")}` : ""}
     ${zak.length ? `<h3>Zakázky (${zak.length})</h3>${zak.slice(0, 30).map((x) => `<div class="pp"><a href="#" data-zakazka="${esc(x.k)}">${esc(x.n)}</a> · ${x.zi === ico ? "zadavatel" : "vítěz"}${x.cb ? " · " + kcKratce(x.cb) : ""}</div>`).join("")}` : ""}
     ${sml.length ? `<h3>Smlouvy v registru smluv (${sml.length})</h3>${sml.map((x) => `<div class="pp">${datum(x.d)} · ${odkaz(x.u, x.p)} · ${x.di === ico ? "dodavatel" : "objednatel"}${x.h ? " · " + kcKratce(x.h) : ""}</div>`).join("")}` : ""}
+    ${eia.length ? `<h3>Záměry v EIA, kde je oznamovatelem (${eia.length})</h3>${eia.slice(0, 30).map(radekEia).join("")}` : ""}
+    ${kand.length ? `<h3>Kandidáti – kritéria profilu (${kand.length})</h3>${kand.slice(0, 20).map((x) => `<div class="pp">${odkaz(x.u, x.n)} · ${esc(x.sp)}</div>`).join("")}` : ""}
+    ${mve.length ? `<h3>Vodní elektrárny, které provozuje (${mve.length})</h3>${mve.slice(0, 30).map(radekMve).join("")}` : ""}
     ${signalyHtml(D.signaly.filter((x) => x.k === ico || (x.s || "").split("; ").includes(ico)), "Signály s tímto IČO")}`);
 }
 
@@ -1240,6 +1297,7 @@ function odkazSignalu(r) {
   for (const s of (r.s || "").split("; ").filter(Boolean).slice(0, 4)) {
     if (ZAK_PODLE_KLICE.has(s)) o.push(`<a href="#" data-zakazka="${esc(s)}">${esc((ZAK_PODLE_KLICE.get(s).n || "").slice(0, 40))}</a>`);
     else if (D.zmeny_up.some((x) => x.k === s)) o.push(`<a href="#" data-up="${esc(s)}">změna ÚP</a>`);
+    else if (/^\d{8}$/.test(s)) o.push(`<a href="#" data-firma="${esc(s)}">IČO ${esc(s)}</a>`);
   }
   return o.join("<br>");
 }
@@ -1319,3 +1377,160 @@ function kresliCenyPozemku() {
 napoj(["#r-kategorie", "#r-kraj"], kresliTrh);
 napoj(["#r-hledat"], kresliKonkurenci);
 napoj(["#r-okres", "#r-druh"], kresliCenyPozemku);
+
+/* ------------------------------------------------------------------ PROJEKTY A EIA (boti projekty, eia, aktiva, mve) */
+const typProjektu = (t) => String(t || "").replace(/_/g, " ");
+const cenaProjektu = (x) => x.c ? `${cislo(x.c)} ${esc(x.me || "Kč")}` : "";
+function radekEia(x) {
+  return `<div class="pp">${odkaz(x.u, x.n)} · <span class="stitek">${esc(x.s)}</span>${x.pl ? ' <span class="stitek">podlimitní</span>' : ""}
+    <div class="tlumene">EIA ${esc(x.k)}${x.o ? " · " + (x.oi ? `<a href="#" data-firma="${esc(x.oi)}">${esc(x.o)}</a>` : esc(x.o)) : ""}${x.do ? " · oznámeno " + datum(x.do) : ""}${x.na ? " · Natura: " + esc(x.na) : ""}</div></div>`;
+}
+function radekProjektu(x) {
+  return `<div class="pp"><span class="stitek">${esc(pop("smer", x.sm))}</span> ${odkaz(x.u, x.n)}
+    <div class="tlumene">${esc(pop("pzdroj", x.z))} · ${esc(typProjektu(x.t))}${x.nf ? " · " + esc(pop("pfaze", x.nf)) : ""}${x.mw ? " · " + esc(x.mw) + " MW" : ""}${x.m2 ? " · " + cislo(x.m2) + " m²" : ""}${x.c ? " · " + cenaProjektu(x) : ""} · ${datum(x.d || x.pz)}</div></div>`;
+}
+function radekMve(x) {
+  return `<div class="pp"><b>${esc(x.n || "vodní elektrárna")}</b> · ${cislo(x.kw)} kW${x.tok ? " · " + esc(x.tok) : ""}
+    <div class="tlumene">${x.di ? `<a href="#" data-firma="${esc(x.di)}">${esc(x.dr)}</a>` : esc(x.dr || (x.dt === "fyzicka_osoba" ? "fyzická osoba" : ""))}${x.dz ? " · provoz od " + datum(x.dz) : ""}${x.ku ? " · k.ú. " + esc(x.ku) : ""}</div></div>`;
+}
+
+const stavPJ = { razeni: "pz", smer: -1 };
+function filtrProjekty() {
+  const h = $("#pj-hledat").value, ze = $("#pj-zeme").value, sm = $("#pj-smer").value, t = $("#pj-typ").value, f = $("#pj-faze").value, a = $("#pj-aktivni").checked;
+  return D.projekty.filter((x) => (!ze || x.ze === ze) && (!sm || x.sm === sm) && (!t || x.t === t) && (!f || x.nf === f) && (!a || x.a)
+    && cinnostSedi(x) && hledej(h, x.n, x.p, x.mi, x.kat));
+}
+const SL_PJ = [
+  { k: "pz", t: "Zachyceno", f: (r) => datum(r.pz) + (r.pz >= predDny(7) ? '<div><span class="stitek ok">nové</span></div>' : "") },
+  { k: "sm", t: "Směr", f: (r) => `<span class="stitek">${esc(pop("smer", r.sm))}</span>` },
+  { k: "n", t: "Projekt", sir: 1, f: (r) => `${odkaz(r.u, r.n)}<div class="tlumene">${esc((r.p || "").slice(0, 200))}</div>` },
+  { k: "t", t: "Typ / fáze", f: (r) => `${esc(typProjektu(r.t))}<div class="tlumene">${esc(pop("pfaze", r.nf))}</div>` },
+  { k: "mi", t: "Místo", f: (r) => { const o = obecZMista(r.m); return `${o ? odkazObce(o) : esc(r.mi)}<div class="tlumene">${esc(pop("zeme", r.ze))} · ${esc(pop("pzdroj", r.z))}</div>`; } },
+  { k: "mw", t: "MW", c: 1, h: (r) => r.mw === "" ? null : +r.mw, f: (r) => esc(r.mw) },
+  { k: "m2", t: "m²", c: 1, f: (r) => cislo(r.m2) },
+  { k: "c", t: "Cena", c: 1, f: (r) => cenaProjektu(r) + (r.dop ? `<div class="tlumene">${esc(r.dop)}</div>` : "") },
+];
+const stavEA = { razeni: "pzm", smer: -1 };
+function filtrEia() {
+  const h = $("#ea-hledat").value, s = $("#ea-stav").value, k = $("#ea-kraj").value, na = $("#ea-natura").checked;
+  return D.eia.filter((x) => (!s || x.s === s) && (!k || x.kr === k) && (!na || x.na) && cinnostSedi(x) && hledej(h, x.n, x.o, x.ob, x.ku, x.k));
+}
+const SL_EA = [
+  { k: "pzm", t: "Změna", h: (r) => r.pzm || r.pz, f: (r) => datum(r.pzm || r.pz) + (r.do ? `<div class="tlumene">oznámeno ${datum(r.do)}</div>` : "") },
+  { k: "n", t: "Záměr", sir: 1, f: (r) => `${odkaz(r.u, r.n)}<div class="tlumene">EIA ${esc(r.k)}${r.za ? " · " + esc(r.za) : ""}${r.pl ? " · podlimitní" : ""}${r.na ? " · Natura: " + esc(r.na) : ""}</div>` },
+  { k: "s", t: "Stav", f: (r) => `<span class="stitek">${esc(r.s)}</span>${D.eia_zmeny.some((z) => z.k === r.k && z.u !== "novy") ? '<div class="tlumene">změna stavu</div>' : ""}` },
+  { k: "o", t: "Oznamovatel", f: (r) => r.ot === "fyzicka_osoba" ? '<span class="tlumene">fyzická osoba</span>' : `${r.oi ? `<a href="#" data-firma="${esc(r.oi)}">${esc(r.o)}</a>` : esc(r.o)}${r.oi ? `<div class="tlumene">IČO ${esc(r.oi)}</div>` : ""}` },
+  { k: "ob", t: "Místo", f: (r) => { const o = obecZMista(r.m); return `${o ? odkazObce(o, r.ob) : esc(r.ob)}<div class="tlumene">${esc(r.ku || "")}${r.kr ? " · " + esc(r.kr) : ""}</div>`; } },
+  { k: "nc", t: "Navazující činnosti", f: (r) => `<span class="tlumene">${esc(r.nc)}</span>` },
+];
+const stavAK = { razeni: "pk", smer: -1 };
+const SL_AK = [
+  { k: "d", t: "Datum", f: (r) => datum(r.d || r.pz) },
+  { k: "n", t: "Záměr (doslovně ze zdroje)", sir: 1, f: (r) => `${odkaz(r.u, r.n)}<div class="tlumene">${r.z === "eia" ? "IS EIA" : "úřední deska"} · ${esc(r.s || "")}</div>` },
+  { k: "mo", t: "Typ", f: (r) => esc(typProjektu(r.mo)) },
+  { k: "pk", t: "Kritérií", c: 1, f: (r) => `<b>${cislo(r.pk)}</b>` },
+  { k: "sp", t: "Splněná kritéria", f: (r) => `<span class="tlumene">${esc((r.sp || "").replace(/_/g, " "))}</span>` },
+  { k: "o", t: "Kdo", f: (r) => r.oi ? `<a href="#" data-firma="${esc(r.oi)}">${esc(r.o || r.oi)}</a>${r.zo > 1 ? `<div class="tlumene">${r.zo} záměrů</div>` : ""}` : esc(r.o) },
+  { k: "ob", t: "Kde", f: (r) => { const o = obecZMista(r.m); return o ? odkazObce(o, r.ob) : esc(r.ob || r.kr); } },
+];
+const stavMV = { razeni: "kw", smer: -1 };
+const SL_MV = [
+  { k: "n", t: "Elektrárna", f: (r) => `<b>${esc(r.n || "—")}</b><div class="tlumene">${esc(r.tok)}${r.km ? " · ř. km " + esc(r.km) : ""}</div>` },
+  { k: "kw", t: "kW", c: 1, f: (r) => cislo(r.kw) },
+  { k: "ob", t: "Místo", f: (r) => { const o = obecZMista(r.m); return `${o ? odkazObce(o, r.ob) : esc(r.ob)}<div class="tlumene">${esc(r.kr)}</div>`; } },
+  { k: "dr", t: "Držitel licence", f: (r) => r.di ? `<a href="#" data-firma="${esc(r.di)}">${esc(r.dr)}</a>${r.md > 1 ? `<div class="tlumene">${r.md} MVE</div>` : ""}` : `<span class="tlumene">${esc(r.dr || (r.dt === "fyzicka_osoba" ? "fyzická osoba" : ""))}</span>` },
+  { k: "dz", t: "Provoz od", f: (r) => datum(r.dz) },
+];
+
+// jednoduchý převod přehledů botů (markdown: nadpisy, tabulky, odrážky, odkazy) na HTML
+function mdNaHtml(md) {
+  const inl = (t) => esc(t).replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, (m, a, u) => `<a href="${u}" target="_blank" rel="noopener">${a}</a>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const radky = md.split("\n"), out = [];
+  let i = 0;
+  while (i < radky.length) {
+    const r = radky[i];
+    if (/^\|/.test(r)) {
+      const t = [];
+      while (i < radky.length && /^\|/.test(radky[i])) { t.push(radky[i]); i++; }
+      const bunky = (x) => x.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const hl = bunky(t[0]), telo = t.slice(2).map(bunky);
+      out.push(`<div class="tabulka-obal"><table><thead><tr>${hl.map((h) => `<th>${inl(h)}</th>`).join("")}</tr></thead><tbody>${telo.map((b) => `<tr>${b.map((c) => `<td>${inl(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    if (/^### /.test(r)) out.push(`<h4>${inl(r.slice(4))}</h4>`);
+    else if (/^## /.test(r)) out.push(`<h3>${inl(r.slice(3))}</h3>`);
+    else if (/^# /.test(r)) out.push(`<h3>${inl(r.slice(2))}</h3>`);
+    else if (/^[-*] /.test(r)) out.push(`<div>• ${inl(r.slice(2))}</div>`);
+    else if (r.trim()) out.push(`<p>${inl(r)}</p>`);
+    i++;
+  }
+  return out.join("");
+}
+
+function kresliProjekty(zpet) {
+  const t30 = predDny(30), t7 = predDny(7);
+  const cz = D.projekty.filter((x) => x.ze === "CZ" && x.a);
+  const dl = [
+    [cislo(D.projekty.filter((x) => x.pz >= t7).length), "nových projektů za 7 dní", `${cislo(D.projekty.filter((x) => x.a).length)} aktivních celkem`],
+    [cislo(cz.length), "aktivních v Česku", `${cislo(cz.filter((x) => x.m).length)} s určenou obcí`],
+    [cislo(D.projekty.filter((x) => x.sm === "financovani").length), "projektů ve financování", "crowdfunding"],
+    [cislo(D.eia.filter((x) => (x.pzm || x.pz) >= t30).length), "záměrů EIA se změnou za 30 dní", `${cislo(D.eia.length)} sledovaných`],
+    [cislo(D.aktiva.kandidati.filter((x) => x.pk >= 3).length), "kandidátů se 3+ kritérii", "poslední rok"],
+    [cislo(D.mve.inzeraty.filter((x) => x.dr === "prodej_mve" || x.dr === "lokalita_projekt_mve").length), "vodních elektráren na prodej", `${cislo(D.mve.vyrobny.length)} s licencí ERÚ`],
+  ];
+  $("#pj-dlazdice").innerHTML = dl.map(([c, p, s]) => `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
+  if (zpet === true) stavPJ.n = NA_STRANKU;
+  stavPJ.prekresli = () => kresliProjektyTab();
+  stavEA.prekresli = () => kresliEia(); stavAK.prekresli = () => kresliAktiva(); stavMV.prekresli = () => kresliMve();
+  kresliProjektyTab(); kresliEia(); kresliAktiva(); kresliMve();
+  const inz = [...D.mve.inzeraty].sort((a, b) => (b.d || b.pz || "") > (a.d || a.pz || "") ? 1 : -1);
+  $("#t-mve-inz").innerHTML = inz.length ? `<thead><tr><th>Datum</th><th>Inzerát</th><th class="cis">kW</th><th class="cis">MWh/rok</th><th class="cis">Cena</th><th class="cis">Kč/kW</th></tr></thead><tbody>` +
+    inz.map((x) => `<tr><td>${datum(x.d || x.pz)}</td><td class="nazev-bunka">${odkaz(x.u, x.n)}<div class="tlumene">${esc(typProjektu(x.dr))}${x.ob ? " · " + esc(x.ob) : ""}${x.tok ? " · " + esc(x.tok) : ""}${x.sv ? " · spárováno s licencí ERÚ" : ""}</div></td><td class="cis">${esc(x.kw)}</td><td class="cis">${esc(x.mwh)}</td><td class="cis">${kc(x.c)}</td><td class="cis">${cislo(x.ckw)}</td></tr>`).join("") + "</tbody>"
+    : '<tr><td class="tlumene">Bot MVE zatím neběžel.</td></tr>';
+  const nazvy = { projekty: "Projekty – co se nabízí, shání a financuje", aktiva: "Kandidáti (filtr EIA a úředních desek)", mve: "Vodní elektrárny" };
+  const md = Object.entries(D.prehledy);
+  $("#pj-prehledy").innerHTML = md.length ? `<div class="md">${md.map(([k, v]) => `<details><summary>${esc(nazvy[k] || k)}</summary>${mdNaHtml(v)}</details>`).join("")}</div>`
+    : '<p class="tlumene">Přehledy přibudou po prvních bězích botů.</p>';
+}
+function kresliProjektyTab(zpet) {
+  if (zpet === true) stavPJ.n = NA_STRANKU;
+  const r = filtrProjekty();
+  $("#pj-pocet").textContent = `${cislo(r.length)} záznamů`;
+  tabulka($("#t-projekty"), SL_PJ, r, stavPJ);
+}
+function kresliEia(zpet) {
+  if (zpet === true) stavEA.n = NA_STRANKU;
+  const r = filtrEia();
+  $("#ea-pocet").textContent = `${cislo(r.length)} záměrů`;
+  tabulka($("#t-eia"), SL_EA, r, stavEA);
+}
+function kresliAktiva(zpet) {
+  if (zpet === true) stavAK.n = NA_STRANKU;
+  const h = $("#ak-hledat").value, mo = $("#ak-model").value, min = +$("#ak-min").value;
+  const r = D.aktiva.kandidati.filter((x) => (x.pk || 0) >= min && (!mo || x.mo === mo) && hledej(h, x.n, x.o, x.ob, x.kr));
+  $("#ak-pocet").textContent = `${cislo(r.length)} záměrů`;
+  tabulka($("#t-aktiva"), SL_AK, r, stavAK);
+}
+function kresliMve(zpet) {
+  if (zpet === true) stavMV.n = NA_STRANKU;
+  const h = $("#mv-hledat").value, v = $("#mv-vel").value;
+  const r = D.mve.vyrobny.filter((x) => (!v || x.vel === v) && hledej(h, x.n, x.tok, x.ob, x.dr, x.ku));
+  $("#mv-pocet").textContent = `${cislo(r.length)} elektráren`;
+  tabulka($("#t-mve"), SL_MV, r, stavMV);
+}
+napoj(["#pj-hledat", "#pj-zeme", "#pj-smer", "#pj-typ", "#pj-faze", "#pj-aktivni"], kresliProjektyTab);
+napoj(["#ea-hledat", "#ea-stav", "#ea-kraj", "#ea-natura"], kresliEia);
+napoj(["#ak-hledat", "#ak-model", "#ak-min"], kresliAktiva);
+napoj(["#mv-hledat", "#mv-vel"], kresliMve);
+$("#pj-csv").onclick = () => stahniCsv("projekty", [
+  ["klic", (r) => r.k], ["zdroj", (r) => r.z], ["zeme", (r) => r.ze], ["smer", (r) => r.sm], ["typ", (r) => r.t], ["typy", (r) => r.ts],
+  ["faze", (r) => r.f], ["nejvyssi_faze", (r) => r.nf], ["vykon_mw", (r) => r.mw], ["plocha_m2", (r) => r.m2], ["cena", (r) => r.c], ["mena", (r) => r.me],
+  ["nazev", (r) => r.n], ["popis", (r) => r.p], ["misto", (r) => r.mi], ["kod_obce", (r) => obecZMista(r.m)], ["datum", (r) => r.d],
+  ["prvni_zachyceni", (r) => r.pz], ["aktivni", (r) => r.a], ["url", (r) => r.u],
+], filtrProjekty());
+$("#ea-csv").onclick = () => stahniCsv("eia-zamery", [
+  ["kod", (r) => r.k], ["nazev", (r) => r.n], ["stav", (r) => r.s], ["zarazeni", (r) => r.za], ["podlimitni", (r) => r.pl],
+  ["oznamovatel", (r) => r.o], ["oznamovatel_ico", (r) => r.oi], ["kraj", (r) => r.kr], ["okres", (r) => r.ok], ["obec", (r) => r.ob],
+  ["katastr", (r) => r.ku], ["natura", (r) => r.na], ["datum_oznameni", (r) => r.do], ["posledni_zmena", (r) => r.pzm], ["url", (r) => r.u],
+], filtrEia());

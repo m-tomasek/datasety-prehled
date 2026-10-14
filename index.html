@@ -27,11 +27,13 @@
     <div class="nazev">Datasety – přehled</div>
     <nav id="zalozky" class="zalozky" role="tablist">
       <button data-z="prehled" class="aktivni">Přehled</button>
+      <button data-z="signaly">Signály</button>
       <button data-z="mapa">Mapa</button>
       <button data-z="zamery">Stavby</button>
       <button data-z="up">Územní plány</button>
       <button data-z="zakazky">Zakázky</button>
       <button data-z="ceny">Ceny</button>
+      <button data-z="trh">Trh a konkurence</button>
       <button data-z="tipy">Tipy na klienty</button>
       <button data-z="nabidky">Dražby a nabídky</button>
       <button data-z="desky">Úřední desky</button>
@@ -58,6 +60,24 @@
         <div class="karta"><h2>Nové za posledních 7 dní – úřední desky</h2><div id="nove-desky" class="seznam"></div></div>
         <div class="karta"><h2>Změny v dražbách a nabídkách (7 dní)</h2><div id="nove-zmeny" class="seznam"></div></div>
       </div>
+    </section>
+
+    <!-- SIGNÁLY -->
+    <section id="z-signaly" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="g-hledat" type="search" placeholder="Hledat (obec, popis)">
+        <select id="g-typ"><option value="">všechny druhy signálů</option></select>
+        <select id="g-kraj"><option value="">všechny kraje</option></select>
+        <select id="g-novost"><option value="">všechny</option><option value="7">nově zachycené za 7 dní</option><option value="30">nově za 30 dní</option></select>
+        <button id="g-csv" class="maly">Stáhnout CSV</button>
+        <span id="g-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Signály vznikají kombinací dat ze všech botů (dražby × změny ÚP, zrušené zakázky, PD bez navazující stavby, stavby bez TDI, územní studie, ceny pozemků, kompenzační opatření…). Co který druh znamená, je v nápovědě pod výběrem druhu.</p>
+      <div id="g-napoveda" class="karta odsazeni tlumene" hidden></div>
+      <div class="tabulka-obal"><table id="t-signaly"></table></div>
+      <div class="karta odsazeni"><h2>Průniky – víc nezávislých událostí na stejné parcele nebo u stejného IČO (12 měsíců)</h2>
+        <p class="tlumene">Např. obec prodává pozemek, o kterém jednalo zastupitelstvo, a zároveň je na něm dražba; nebo firma je stavebníkem, prodává majetek a je v tipech.</p>
+        <div class="tabulka-obal nizka"><table id="t-pruniky"></table></div></div>
     </section>
 
     <!-- MAPA -->
@@ -93,7 +113,17 @@
         <button id="n-csv" class="maly">Stáhnout CSV</button>
         <span id="n-pocet" class="tlumene"></span>
       </div>
+      <p class="tlumene poznamka-nad">Klik na název = detail s parcelami, LV a stavbami. Štítky: památka, opakovaná dražba, jistota.</p>
       <div class="tabulka-obal"><table id="t-nabidky"></table></div>
+      <div class="karta odsazeni"><h2>Prodeje a dražby obcí z úředních desek (jednotlivé parcely s cenou)</h2>
+        <div class="filtry">
+          <input id="p-hledat" type="search" placeholder="Hledat (obec, k.ú., parcela)">
+          <select id="p-druh"><option value="">všechny druhy</option></select>
+          <select id="p-kraj"><option value="">všechny kraje</option></select>
+          <button id="p-csv" class="maly">Stáhnout CSV</button>
+          <span id="p-pocet" class="tlumene"></span>
+        </div>
+        <div class="tabulka-obal nizka"><table id="t-prodeje"></table></div></div>
     </section>
 
     <!-- ÚŘEDNÍ DESKY -->
@@ -146,6 +176,16 @@
             <div class="tabulka-obal nizka"><table id="t-zhotovitele"></table></div></div>
         </div>
       </div>
+      <div class="karta odsazeni"><h2>Územní studie a regulační plány (celostátní evidence ÚÚR)</h2>
+        <p class="tlumene">Schválená studie = obec má podklad pro zástavbu plochy, další krok bývá parcelace, sítě a projekty domů.</p>
+        <div class="filtry">
+          <input id="us-hledat" type="search" placeholder="Hledat (obec, název, zhotovitel)">
+          <select id="us-typ"><option value="">ÚS i RP</option><option value="ÚS">územní studie</option><option value="RP">regulační plány</option></select>
+          <select id="us-kraj"><option value="">všechny kraje</option></select>
+          <select id="us-obdobi"><option value="365">poslední pohyb do roka</option><option value="730" selected>do 2 let</option><option value="0">vše</option></select>
+          <span id="us-pocet" class="tlumene"></span>
+        </div>
+        <div class="tabulka-obal nizka"><table id="t-studie"></table></div></div>
       <div class="karta odsazeni"><h2>Nové v celostátní evidenci územních plánů (180 dní)</h2>
         <p class="tlumene">Změny, které obce nahlásily do evidence ÚÚR (často dřív, než se objeví na úřední desce).</p>
         <div class="tabulka-obal nizka"><table id="t-up-evidence"></table></div></div>
@@ -202,6 +242,36 @@
       <div class="karta"><h2>Jednotlivé zakázky s výsledkem</h2><div class="tabulka-obal nizka"><table id="t-vysledky"></table></div></div>
     </section>
 
+    <!-- TRH A KONKURENCE -->
+    <section id="z-trh" class="zalozka" hidden>
+      <div class="filtry">
+        <select id="r-kategorie"><option value="vše">všechny kategorie</option></select>
+        <select id="r-kraj"><option value="celá ČR">celá ČR</option></select>
+        <span class="tlumene">Zdroj: zakázky z profilů zadavatelů a registr smluv.</span>
+      </div>
+      <div id="r-souhrn" class="dlazdice"></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Vyhlášené zakázky po měsících (24 měsíců)</h2><div id="g-trend" class="graf"></div></div>
+        <div class="karta"><h2>Zrušené zakázky po měsících</h2><div id="g-zruseno" class="graf"></div></div>
+      </div>
+      <div class="karta odsazeni"><h2>Konkurence – kdo podává nabídky a jak uspívá</h2>
+        <div class="filtry"><input id="r-hledat" type="search" placeholder="Hledat firmu nebo IČO"><span id="r-pocet" class="tlumene"></span></div>
+        <p class="tlumene">Náskok = o kolik % byl vítěz levnější než druhá nabídka. Ztráta = o kolik % byla firma dražší než vítěz, když prohrála. Klik na firmu = profil.</p>
+        <div class="tabulka-obal nizka"><table id="t-konkurence"></table></div></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Trh podle kraje a kategorie</h2><div class="tabulka-obal nizka"><table id="t-trh"></table></div></div>
+        <div class="karta"><h2>Pipeline podle okresu (co se chystá)</h2><div class="tabulka-obal nizka"><table id="t-pipeline"></table></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Cenová mapa pozemků (Kč/m² z dražeb, nabídek a prodejů obcí)</h2>
+          <div class="filtry"><input id="r-okres" type="search" placeholder="Okres"><select id="r-druh"><option value="">všechny druhy pozemků</option></select></div>
+          <div class="tabulka-obal nizka"><table id="t-ceny-pozemku"></table></div></div>
+        <div class="karta"><h2>Navazující zakázky – PD → stavba u stejného zadavatele</h2>
+          <p class="tlumene">Jak dlouho po smlouvě na projektovou dokumentaci zadavatel vypsal stavbu. Medián je v souhrnu nahoře.</p>
+          <div class="tabulka-obal nizka"><table id="t-navaznosti"></table></div></div>
+      </div>
+    </section>
+
     <!-- TIPY -->
     <section id="z-tipy" class="zalozka" hidden>
       <div class="filtry">
@@ -243,6 +313,10 @@
       </div>
       <div class="mrizka2">
         <div class="karta"><h2>Bot tipy na klienty – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-firmy"></table></div></div>
+        <div class="karta"><h2>Souvislosti a signály – poslední výpočty</h2><div class="tabulka-obal"><table id="t-beh-souvislosti"></table></div></div>
+      </div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Bot kontext (ČSÚ, příroda, záplavy, budovy, insolvence) – poslední běhy</h2><div class="tabulka-obal"><table id="t-beh-kontext"></table></div></div>
       </div>
     </section>
   </main>

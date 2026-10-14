@@ -150,3 +150,5 @@ table.info td, table.info th { padding: 4px 6px; }
 .osa-datum { display: inline-block; min-width: 90px; color: var(--text2); font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) { .cinnost-volba { order: 3; width: 100%; } .cinnost-volba select { max-width: none; flex: 1; } }
 .mezinadpis { font-size: 13px; margin: 0 0 8px; color: var(--text2); }
+.stitek.varovani { background: color-mix(in srgb, var(--chyba) 14%, transparent); color: var(--chyba); }
+.varovani-text { border-left: 3px solid var(--chyba); padding: 6px 10px; background: color-mix(in srgb, var(--chyba) 8%, transparent); border-radius: 4px; }

@@ -152,3 +152,7 @@ table.info td, table.info th { padding: 4px 6px; }
 .mezinadpis { font-size: 13px; margin: 0 0 8px; color: var(--text2); }
 .stitek.varovani { background: color-mix(in srgb, var(--chyba) 14%, transparent); color: var(--chyba); }
 .varovani-text { border-left: 3px solid var(--chyba); padding: 6px 10px; background: color-mix(in srgb, var(--chyba) 8%, transparent); border-radius: 4px; }
+
+/* dlouhé položky v rozbalovacích seznamech nesmí na mobilu rozšířit stránku */
+select { max-width: 100%; text-overflow: ellipsis; }
+.filtry select { min-width: 0; }

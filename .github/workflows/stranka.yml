@@ -55,6 +55,7 @@ jobs:
         run: |
           mkdir -p site
           cp web/index.html web/app.js web/styl.css web/.nojekyll site/
+          cp -r web/lib web/obchod site/
           cp data/data.enc data/info.json site/
           echo -n "${{ steps.nova.outputs.data }}" > site/verze.txt
       - uses: actions/configure-pages@v5

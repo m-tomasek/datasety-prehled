@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Obchod – příležitosti z dat</title>
+<link rel="stylesheet" href="../styl.css">
+<link rel="stylesheet" href="obchod.css">
+</head>
+<body>
+<div id="zamek" class="zamek">
+  <form id="prihlaseni" class="karta prihlaseni">
+    <h1>Obchod – příležitosti z dat</h1>
+    <p class="tlumene">Stejné heslo jako přehled datasetů. Data jsou zašifrovaná.</p>
+    <input id="heslo" type="password" autocomplete="current-password" placeholder="Heslo" required>
+    <label class="radek"><input id="pamatovat" type="checkbox"> Zapamatovat na tomto zařízení</label>
+    <button type="submit">Otevřít</button>
+    <p id="chyba" class="chyba" hidden></p>
+  </form>
+</div>
+
+<div id="aplikace" hidden>
+  <header class="hlavicka">
+    <div class="nazev">Obchod</div>
+    <nav id="zalozky" class="zalozky" role="tablist">
+      <button data-z="dnes" class="aktivni">Dnes</button>
+      <button data-z="leady">Příležitosti</button>
+      <button data-z="pipeline">Můj obchod</button>
+      <button data-z="ucty">Zákazníci</button>
+      <button data-z="konkurence">Konkurence</button>
+      <button data-z="cena">Nacenění</button>
+      <button data-z="trhy">Kde vydělat</button>
+      <button data-z="nastaveni">Nastavení</button>
+    </nav>
+    <div class="vpravo"><a class="maly odkaz-tl" href="../">Přehled datasetů</a><span id="stari" class="tlumene"></span><button id="odhlasit" class="maly">Zamknout</button></div>
+  </header>
+
+  <main>
+    <!-- DNES -->
+    <section id="z-dnes" class="zalozka">
+      <p id="d-uvod" class="tlumene poznamka-nad"></p>
+      <div id="d-dlazdice" class="dlazdice"></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Nejlepší příležitosti teď</h2><div id="d-top" class="seznam"></div></div>
+        <div class="karta"><h2>Moje úkoly a připomínky</h2><div id="d-ukoly" class="seznam"></div>
+          <h2 class="mezera">Lhůty do 7 dní ve vašich oborech</h2><div id="d-lhuty" class="seznam"></div></div>
+      </div>
+    </section>
+
+    <!-- PŘÍLEŽITOSTI -->
+    <section id="z-leady" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="l-hledat" type="search" placeholder="Hledat (název, zadavatel, obec)">
+        <select id="l-typ"><option value="">všechny druhy</option></select>
+        <select id="l-kraj"><option value="">moje území</option></select>
+        <select id="l-min"><option value="0">jakákoli hodnota</option><option value="100000">od 100 tis. Kč</option><option value="500000">od 0,5 mil. Kč</option><option value="2000000">od 2 mil. Kč</option><option value="10000000">od 10 mil. Kč</option></select>
+        <label><input type="checkbox" id="l-moje" checked> jen moje obory</label>
+        <label><input type="checkbox" id="l-skryt" checked> skrýt už zařazené</label>
+        <button id="l-csv" class="maly">Stáhnout CSV</button>
+        <span id="l-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Skóre = hodnota × naléhavost × slabá konkurence × shoda s vašimi obory × čerstvost (váhy v Nastavení). U každé položky je rozpad, odkud body jsou. Odhad hodnoty je z mediánu vítězných cen stejného oboru a kraje, nebo z honoráře ke stavbě.</p>
+      <div class="tabulka-obal"><table id="t-leady"></table></div>
+    </section>
+
+    <!-- PIPELINE -->
+    <section id="z-pipeline" class="zalozka" hidden>
+      <div id="p-dlazdice" class="dlazdice"></div>
+      <div class="filtry">
+        <select id="p-stav"><option value="">všechny stavy</option></select>
+        <button id="p-csv" class="maly">Stáhnout CSV</button>
+        <button id="p-ics" class="maly">Připomínky do kalendáře (.ics)</button>
+        <button id="p-zaloha" class="maly">Záloha (soubor)</button>
+        <label class="maly tl-soubor">Obnovit ze zálohy <input id="p-obnova" type="file" accept=".json,application/json" hidden></label>
+        <span id="p-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Ukládá se jen v tomto prohlížeči. Pro jiné zařízení použijte zálohu a obnovení.</p>
+      <div class="tabulka-obal"><table id="t-pipeline"></table></div>
+    </section>
+
+    <!-- ZÁKAZNÍCI -->
+    <section id="z-ucty" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="u-hledat" type="search" placeholder="Hledat zákazníka nebo IČO">
+        <select id="u-kraj"><option value="">moje území</option></select>
+        <select id="u-typ"><option value="">všichni</option><option value="otevrene">s otevřenou zakázkou</option><option value="stavby">se stavbou v řízení</option><option value="opak">s opakovanou poptávkou</option></select>
+        <span id="u-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Kdo kupuje to, co prodáváte: útrata ve vašich oborech za 3 roky (registr smluv + vysoutěžené zakázky), kdo jim teď dodává a co se u nich chystá.</p>
+      <div class="tabulka-obal"><table id="t-ucty"></table></div>
+    </section>
+
+    <!-- KONKURENCE -->
+    <section id="z-konkurence" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="k-hledat" type="search" placeholder="Hledat firmu nebo IČO">
+        <select id="k-kraj"><option value="">moje území</option></select>
+        <span id="k-pocet" class="tlumene"></span>
+      </div>
+      <p class="tlumene poznamka-nad">Dodavatelé ve vašich oborech: kolik vyhrávají, u koho, o kolik podstřelují druhého a o kolik prohrávají. Klik na firmu otevře kartu.</p>
+      <div class="tabulka-obal"><table id="t-konkurence"></table></div>
+    </section>
+
+    <!-- NACENĚNÍ -->
+    <section id="z-cena" class="zalozka" hidden>
+      <div class="filtry">
+        <input id="c-hledat" type="search" placeholder="Co naceňujete? (např. PD rekonstrukce školy, TDI chodník)">
+        <select id="c-kat"><option value="">moje obory</option></select>
+        <select id="c-kraj"><option value="">celá ČR</option></select>
+        <span id="c-pocet" class="tlumene"></span>
+      </div>
+      <div id="c-dlazdice" class="dlazdice"></div>
+      <div class="karta odsazeni"><h2>Rozložení vítězných cen</h2><div id="c-graf" class="graf"></div></div>
+      <div class="karta odsazeni"><h2>Srovnatelné zakázky a smlouvy</h2><div class="tabulka-obal nizka"><table id="t-cena"></table></div></div>
+    </section>
+
+    <!-- KDE VYDĚLAT -->
+    <section id="z-trhy" class="zalozka" hidden>
+      <p class="tlumene poznamka-nad">Velikost a dostupnost trhů z registru smluv a zakázek. Fakta k rozhodnutí, kam jít – výklad je na vás.</p>
+      <div class="karta odsazeni"><h2>Trhy podle oboru a kraje (posledních 12 měsíců)</h2>
+        <div class="filtry"><select id="m-kat"><option value="">všechny obory</option></select><label><input type="checkbox" id="m-moje" checked> jen moje obory</label></div>
+        <div class="tabulka-obal nizka"><table id="t-trhy"></table></div></div>
+      <div class="karta odsazeni"><h2>Opakující se poptávky (stejný zadavatel, podobná věc znovu)</h2>
+        <p class="tlumene">Kandidáti na rámcovou smlouvu nebo standardizovaný produkt.</p>
+        <div class="tabulka-obal nizka"><table id="t-opak"></table></div></div>
+      <div class="mrizka2">
+        <div class="karta"><h2>Co se shání víc, než nabízí (inzerce projektů)</h2><div class="tabulka-obal nizka"><table id="t-poptavka"></table></div></div>
+        <div class="karta"><h2>Kde přichází jediná nabídka</h2><div class="tabulka-obal nizka"><table id="t-mezery"></table></div></div>
+      </div>
+    </section>
+
+    <!-- NASTAVENÍ -->
+    <section id="z-nastaveni" class="zalozka" hidden>
+      <div class="mrizka2">
+        <div class="karta">
+          <h2>Co prodáváte</h2>
+          <div id="n-obory" class="volby"></div>
+          <h2 class="mezera">Vaše území</h2>
+          <div id="n-kraje" class="volby"></div>
+          <h2 class="mezera">Vaše firma (nepovinné)</h2>
+          <p class="tlumene">IČO vaší firmy: vlastní výhry se ukážou zvlášť a nebudete sám sobě konkurent.</p>
+          <input id="n-ico" inputmode="numeric" maxlength="8" placeholder="IČO">
+        </div>
+        <div class="karta">
+          <h2>Váhy skóre příležitostí</h2>
+          <div id="n-vahy"></div>
+          <p class="tlumene">Nastavení se ukládá jen v tomto prohlížeči.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside id="panel" class="panel" hidden>
+    <button id="panel-zavrit" class="maly panel-zavrit" aria-label="Zavřít">Zavřít ✕</button>
+    <div id="panel-obsah"></div>
+  </aside>
+</div>
+<script src="obchod.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+/* Obchodní aplikace – doplňky ke společnému styl.css */
+.mezera { margin-top: 18px; }
+.odkaz-tl { text-decoration: none; border: 1px solid var(--cara); border-radius: 6px; padding: 4px 8px; color: var(--text2); }
+.tl-soubor { border: 1px solid var(--cara); border-radius: 6px; cursor: pointer; }
+.volby { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.volby label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.skore { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.skore-pruh { display: inline-flex; width: 64px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--mrizka); }
+.skore-pruh i { display: block; height: 100%; }
+.sk-h { background: var(--s1); } .sk-n { background: var(--s2); } .sk-k { background: var(--s3); } .sk-s { background: var(--s4); } .sk-c { background: var(--s5); }
+.legenda-skore { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text2); }
+.legenda-skore i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.lead-akce select, .lead-akce button { padding: 3px 6px; font-size: 12px; }
+.stitek.horko { border-color: var(--s2); color: var(--s2); }
+.stitek.stav-vyhra { border-color: var(--s3); color: var(--s3); }
+.stitek.stav-prohra { border-color: var(--chyba); color: var(--chyba); }
+.pp-radek { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.pruh { height: 6px; background: var(--s1); border-radius: 3px; }
+.vyber-pole { display: grid; gap: 8px; }
+.vyber-pole label { display: grid; grid-template-columns: 150px 1fr 32px; gap: 8px; align-items: center; font-size: 13px; }
+textarea.poznamka { width: 100%; min-height: 70px; font: inherit; color: var(--text); background: var(--plocha); border: 1px solid var(--cara); border-radius: 6px; padding: 6px; }
+@media (max-width: 600px) { .vyber-pole label { grid-template-columns: 1fr 1fr 28px; } }
+.polozka .stitek { align-self: start; justify-self: start; }
+.odkaz-tl { white-space: nowrap; }

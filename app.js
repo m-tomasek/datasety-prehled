@@ -19,10 +19,40 @@ const uloz = {
   pis(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* nic */ } },
   smaz(k) { try { localStorage.removeItem(k); } catch (e) { /* nic */ } },
 };
+// Zapamatovaný klíč je neexportovatelný CryptoKey v IndexedDB: skript ho umí použít, ale nedá se z něj vyčíst.
+// Sdílí ho i aplikace Obchod (obchod/). Starší surový klíč v localStorage se při prvním načtení převede a smaže.
+const IDB = {
+  db() {
+    return new Promise((ok, chyba) => {
+      try {
+        const r = indexedDB.open("datasety-prehled", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("klice");
+        r.onsuccess = () => ok(r.result); r.onerror = () => chyba(r.error);
+      } catch (e) { chyba(e); }
+    });
+  },
+  async cti(k) {
+    try { const db = await this.db(); return await new Promise((ok) => { const t = db.transaction("klice").objectStore("klice").get(k); t.onsuccess = () => ok(t.result || null); t.onerror = () => ok(null); }); }
+    catch (e) { return null; }
+  },
+  async pis(k, v) {
+    try { const db = await this.db(); await new Promise((ok, ch) => { const t = db.transaction("klice", "readwrite"); t.objectStore("klice").put(v, k); t.oncomplete = ok; t.onerror = () => ch(t.error); }); return true; }
+    catch (e) { return false; }
+  },
+  async smaz(k) {
+    try { const db = await this.db(); await new Promise((ok) => { const t = db.transaction("klice", "readwrite"); t.objectStore("klice").delete(k); t.oncomplete = ok; t.onerror = ok; }); }
+    catch (e) { /* nic */ }
+  },
+};
+const IDB_KLIC = "klic-v2";
 
 /* ------------------------------------------------------------------ kryptografie */
-const b64naBajty = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-const bajtyNaB64 = (b) => btoa(String.fromCharCode(...new Uint8Array(b)));
+const b64naBajty = (s) => {
+  if (Uint8Array.fromBase64) return Uint8Array.fromBase64(s);
+  const b = atob(s), u = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return u;
+};
 
 async function stahniObalku() {
   const r = await fetch(SOUBOR + "?t=" + Date.now(), { cache: "no-store" });
@@ -34,21 +64,25 @@ async function klicZHesla(heslo, obalka) {
   const zaklad = await crypto.subtle.importKey("raw", new TextEncoder().encode(heslo), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", hash: "SHA-256", salt: b64naBajty(obalka.sul), iterations: obalka.iter },
-    zaklad, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+    zaklad, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
 }
 
 async function desifruj(obalka, klic) {
   const zip = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64naBajty(obalka.iv) }, klic, b64naBajty(obalka.data));
   const proud = new Blob([zip]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return JSON.parse(await new Response(proud).text());
+  return new Response(proud).json();
 }
 
 /* ------------------------------------------------------------------ přihlášení */
+let CASOVAC = null;
 async function otevri(data, klic) {
+  if (D) return;                                 // ruční přihlášení a automatické odemčení se mohou potkat
   D = data; KLIC = klic; VERZE = data.vytvoreno;
   $("#zamek").hidden = true; $("#aplikace").hidden = false;
-  pripravData(); vykresliVse();
-  setInterval(zkontrolujNovaData, KONTROLA_MS);
+  try { pripravData(); vykresliVse(); }
+  catch (x) { console.error(x); $("main").insertAdjacentHTML("afterbegin", `<p class="chyba">Část dat se nepodařilo zpracovat (${esc(x.message)}). Zkuste stránku obnovit.</p>`); }
+  CASOVAC = CASOVAC || setInterval(zkontrolujNovaData, KONTROLA_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) zkontrolujNovaData(); });
 }
 
 $("#prihlaseni").addEventListener("submit", async (e) => {
@@ -60,9 +94,7 @@ $("#prihlaseni").addEventListener("submit", async (e) => {
     const klic = await klicZHesla($("#heslo").value, obalka);
     let data;
     try { data = await desifruj(obalka, klic); } catch (x) { throw new Error("Špatné heslo."); }
-    if ($("#pamatovat").checked) {
-      uloz.pis(ULOZ_KLIC, JSON.stringify({ sul: obalka.sul, k: bajtyNaB64(await crypto.subtle.exportKey("raw", klic)) }));
-    }
+    if ($("#pamatovat").checked) await IDB.pis(IDB_KLIC, { sul: obalka.sul, iter: obalka.iter, klic });
     $("#heslo").value = "";
     await otevri(data, klic);
   } catch (x) {
@@ -70,30 +102,40 @@ $("#prihlaseni").addEventListener("submit", async (e) => {
   } finally { tl.disabled = false; tl.textContent = "Otevřít"; }
 });
 
-$("#odhlasit").addEventListener("click", () => { uloz.smaz(ULOZ_KLIC); location.reload(); });
+$("#odhlasit").addEventListener("click", async () => { await IDB.smaz(IDB_KLIC); uloz.smaz(ULOZ_KLIC); location.reload(); });
 
 (async function automatickePrihlaseni() {
-  const ul = uloz.cti(ULOZ_KLIC);
-  if (!ul) return;
+  let ul = await IDB.cti(IDB_KLIC);
+  const stary = uloz.cti(ULOZ_KLIC);
+  if (!ul && !stary) return;
   try {
-    const { sul, k } = JSON.parse(ul);
     const obalka = await stahniObalku();
-    if (obalka.sul !== sul) { uloz.smaz(ULOZ_KLIC); return; }
-    const klic = await crypto.subtle.importKey("raw", b64naBajty(k), "AES-GCM", false, ["decrypt"]);
-    await otevri(await desifruj(obalka, klic), klic);
-  } catch (x) { uloz.smaz(ULOZ_KLIC); }
+    if (!ul) {                                   // převod starého surového klíče na neexportovatelný
+      const { sul, k } = JSON.parse(stary);
+      ul = { sul, iter: obalka.iter, klic: await crypto.subtle.importKey("raw", b64naBajty(k), "AES-GCM", false, ["decrypt"]) };
+      uloz.smaz(ULOZ_KLIC);
+      if (ul.sul === obalka.sul) await IDB.pis(IDB_KLIC, ul);
+    }
+    if (ul.sul !== obalka.sul || ul.iter !== obalka.iter) { await IDB.smaz(IDB_KLIC); return; }
+    let data;
+    try { data = await desifruj(obalka, ul.klic); } catch (x) { await IDB.smaz(IDB_KLIC); return; }   // klíč už neplatí
+    await otevri(data, ul.klic);
+  } catch (x) { /* síť: klíč ponechat, zůstane formulář */ }
 })();
 
 /* ------------------------------------------------------------------ "realtime": nová data od botů */
 async function zkontrolujNovaData() {
+  if (document.hidden || !KLIC) return;
   try {
     const r = await fetch(INFO + "?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return;
     const info = await r.json();
     if (!info.vytvoreno || info.vytvoreno === VERZE) return;
     const data = await desifruj(await stahniObalku(), KLIC);
-    D = data; VERZE = data.vytvoreno;
-    pripravData(); vykresliVse(true);
+    const stara = D;
+    D = data;
+    try { pripravData(); vykresliVse(true); VERZE = data.vytvoreno; }
+    catch (x) { console.error(x); D = stara; pripravData(); }   // nová data se nepodařilo zpracovat: zůstanou stará
   } catch (x) { /* zkusí se příště */ }
 }
 
@@ -175,15 +217,19 @@ const pop = (skup, k) => (POPISY[skup] && POPISY[skup][k]) || (k ? String(k).rep
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const cislo = (n) => (n == null || n === "" ? "" : Number(n).toLocaleString("cs-CZ"));
 const kc = (n) => (n == null || n === "" ? "" : Number(n).toLocaleString("cs-CZ") + " Kč");
-const datum = (s) => { if (!s) return ""; const [r, m, d] = s.slice(0, 10).split("-"); return d ? `${+d}. ${+m}. ${r}` : s; };
-const dnesIso = () => new Date().toISOString().slice(0, 10);
+const datum = (s) => { if (!s) return ""; const [r, m, d] = String(s).slice(0, 10).split("-"); return d ? `${+d}. ${+m}. ${r}` : esc(s); };
+// čas v Praze (lhůty v datech jsou místní čas), ne UTC
+const praha = () => new Date().toLocaleString("sv-SE", { timeZone: "Europe/Prague" }).replace(" ", "T");
+const dnesIso = () => praha().slice(0, 10);
 const predDny = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-const odkaz = (u, t) => (u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>` : esc(t));
+const bezpecnaUrl = (u) => (u && /^https?:\/\//i.test(u) ? u : "");   // javascript:, data: apod. nikdy jako odkaz
+const odkaz = (u, t) => (bezpecnaUrl(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
 
 let NAB_PODLE_KLICE = new Map(), DOK_PODLE_ID = new Map();
 let ZAK_PODLE_KLICE = new Map(), NAB_ZAK = new Map(), KONK = new Map();
 function pripravData() {
-  for (const k of ["zamery", "zakazky", "nabidky_zak", "smlouvy", "tipy", "udalosti_up"]) D[k] = D[k] || [];
+  for (const k of ["zamery", "zakazky", "nabidky_zak", "smlouvy", "tipy", "udalosti_up", "nabidky", "dokumenty", "zmeny_up", "zmeny"]) D[k] = D[k] || [];
+  D.behy = D.behy || {}; D.body = D.body || {}; D.body.k = D.body.k || {}; D.body.o = D.body.o || {};
   D.obce_up = D.obce_up || {}; D.investori = D.investori || {};
   for (const k of ["prodeje", "studie", "signaly"]) D[k] = D[k] || [];
   for (const k of ["predmety", "zmeny_ev", "firmy_obce"]) D[k] = D[k] || {};
@@ -317,7 +363,7 @@ function vykresliZalozku() { KRESLI[ZALOZKA](); vykreslene.add(ZALOZKA); }
 function vykresliVse(obnova) {
   if (!obnova) {
     const ul = uloz.cti("prehled-zalozka");
-    const b = ul && document.querySelector(`#zalozky button[data-z="${ul}"]`);
+    const b = ul && document.querySelector(`#zalozky button[data-z="${CSS.escape(ul)}"]`);
     if (b) { b.click(); return; }
   }
   vykreslene.clear(); vykresliZalozku();
@@ -355,6 +401,7 @@ function grafSloupce(el, data, popisHodnoty) {
     if (i == null) return skryjTip();
     ukazTip(e, data[i].t || `${esc(data[i].l)}: <b>${cislo(data[i].v)}</b> ${popisHodnoty || ""}`);
   };
+  el.onclick = el.onmousemove;                   // na mobilu ťuknutím
   el.onmouseleave = () => { skryjTip(); el.querySelectorAll(".sl").forEach((p) => p.classList.remove("hover")); };
 }
 
@@ -376,6 +423,7 @@ function grafVodorovne(el, data, popisHodnoty) {
     if (i == null) return skryjTip();
     ukazTip(e, `${esc(data[i].l)}: <b>${cislo(data[i].v)}</b> ${popisHodnoty || ""}`);
   };
+  el.onclick = el.onmousemove;                   // na mobilu ťuknutím
   el.onmouseleave = () => { skryjTip(); el.querySelectorAll(".sl").forEach((p) => p.classList.remove("hover")); };
 }
 
@@ -397,7 +445,7 @@ function kresliPrehled() {
   const dok7 = D.dokumenty.filter((x) => x.dt >= t7);
   const up30 = D.zmeny_up.filter((x) => x.df >= t30);
   const nove7 = D.nabidky.filter((x) => (x.dz || x.pz) >= t7);
-  const ted = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const ted = praha().slice(0, 16).replace("T", " ");
   const zak = D.zakazky.filter((x) => cinnostSedi(x));
   const zakOtevrene = zak.filter((x) => x.lh && x.lh >= ted);
   const stavby30 = D.zamery.filter((x) => x.pd >= t30 && cinnostSedi(x));
@@ -478,7 +526,11 @@ function tabulka(el, sloupce, radky, stav) {
 }
 
 function stahniCsv(nazev, sloupce, radky) {
-  const q = (v) => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const q = (v) => {
+    let s = typeof v === "number" ? String(v).replace(".", ",") : /^-?\d+\.\d+$/.test(v ?? "") ? String(v).replace(".", ",") : String(v ?? "");
+    if (/^[=+\-@\t\r]/.test(s) && !/^-?\d/.test(s)) s = "'" + s;          // Excel by to četl jako vzorec
+    return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
   const text = "﻿" + sloupce.map((s) => q(s[0])).join(";") + "\n" + radky.map((r) => sloupce.map((s) => q(s[1](r))).join(";")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
@@ -487,7 +539,12 @@ function stahniCsv(nazev, sloupce, radky) {
 }
 
 function napoj(ids, fn) {
-  ids.forEach((id) => { const el = $(id); el.oninput = el.onchange = () => fn(true); });
+  ids.forEach((id) => {
+    const el = $(id); if (!el) return;
+    if (el.tagName === "INPUT" && el.type !== "checkbox" && el.type !== "radio") {
+      let t; el.oninput = () => { clearTimeout(t); t = setTimeout(() => fn(true), 200); };
+    } else el.onchange = () => fn(true);
+  });
 }
 const hledej = (text, ...pole) => { const t = text.trim().toLowerCase(); return !t || pole.some((p) => (p || "").toLowerCase().includes(t)); };
 
@@ -607,6 +664,7 @@ function vytvorShluk(trida) {
 }
 
 function kresliMapu() {
+  if (typeof L === "undefined") { $("#m-pocet").textContent = "Mapová knihovna se nenačetla – zkuste stránku obnovit."; return; }
   if (!MAPA) {
     MAPA = L.map("mapa", { preferCanvas: true }).setView([49.8, 15.5], 7);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -827,7 +885,7 @@ function detailUp(klic) {
     const d = delky[posl + ">vydani"];
     if (d) dalsi.push(`Od fáze „${esc(pop("faze", posl))}“ k vydání to v datech trvalo obvykle <b>${cislo(Math.round(d.m))} dní</b> (medián z ${d.n} změn).`);
   }
-  const docs = r.ids.map((i) => DOK_PODLE_ID.get(i)).filter(Boolean);
+  const docs = (r.ids || []).map((i) => DOK_PODLE_ID.get(i)).filter(Boolean);
   otevriPanel(`<h2>${esc(r.ob)} – ${esc(nazevZmeny(r))}</h2>
     <p class="tlumene">${esc(r.ok)} · ${esc(r.kr)} · ${odkazObce(obec, "vše v obci →")}</p>
     ${tabInfo([radekInfo("Stav", esc(pop("stavup", r.st)) + (r.dbp !== "" ? ` (poslední dokument před ${cislo(r.dbp)} dny)` : "")),
@@ -856,7 +914,8 @@ function profilObce(kod) {
   const zak = D.zakazky.filter(vObci), tipy = D.tipy.filter(vObci);
   const zast = D.dokumenty.filter((x) => vObci(x) && x.zb).slice(0, 15);
   const ud = D.udalosti_up.filter((u) => u.o === kod);
-  const sml = D.smlouvy.filter((s) => zak.some((z) => z.zi === s.oi)).slice(0, 20);
+  const ziSet = new Set(zak.map((z) => z.zi));
+  const sml = D.smlouvy.filter((s) => ziSet.has(s.oi)).slice(0, 20);
   const us = D.studie.filter((x) => x.o === kod), zev = D.zmeny_ev[kod] || [], fo = D.firmy_obce[kod] || {};
   const pro = D.prodeje.filter(vObci).slice(0, 30), sig = D.signaly.filter((x) => x.o === kod);
   const eia = D.eia.filter(vObci), pj = D.projekty.filter(vObci), mve = D.mve.vyrobny.filter(vObci);
@@ -935,7 +994,7 @@ function detailZameru(klic) {
   if (!r) return;
   const inv = r.si ? D.investori[r.si] : null;
   const dalsi = r.si ? D.zamery.filter((x) => x.si === r.si && x.k !== r.k) : [];
-  const docs = r.ids.map((i) => DOK_PODLE_ID.get(i)).filter(Boolean);
+  const docs = (r.ids || []).map((i) => DOK_PODLE_ID.get(i)).filter(Boolean);
   const osa = Object.entries(r.fz || {}).map(([k, d]) => [d, esc(pop("zfaze", k))]);
   otevriPanel(`<h2>${esc(r.n)}</h2><p class="tlumene">${odkazObce(obecZMista(r.m), r.ku || nazevObce(obecZMista(r.m)) || "obec")} · ${esc(r.ok)} · ${esc(r.kr)}</p>
     ${tabInfo([radekInfo("Fáze", esc(pop("zfaze", r.f)) + " " + datum(r.df)), radekInfo("Druh stavby", esc(r.ds)),
@@ -957,7 +1016,7 @@ function detailZameru(klic) {
 const stavK = { razeni: "dz", smer: -1 };
 function filtrZakazky() {
   const h = $("#k-hledat").value, ka = $("#k-kategorie").value, s = $("#k-stav").value, k = $("#k-kraj").value,
-    dr = $("#k-druh").value, ot = $("#k-otevrene").checked, ted = new Date().toISOString().slice(0, 16).replace("T", " ");
+    dr = $("#k-druh").value, ot = $("#k-otevrene").checked, ted = praha().slice(0, 16).replace("T", " ");
   return D.zakazky.filter((x) => (!ka || (x.kat || "").split("; ").includes(ka)) && (!s || x.s === s) && (!k || x.kr === k)
     && (!dr || x.dr === dr) && (!ot || (x.lh && x.lh >= ted)) && cinnostSedi(x) && hledej(h, x.n, x.c, x.zd, x.zi, x.v, x.vi, x.p));
 }
@@ -1098,7 +1157,7 @@ function udalostiKalendare() {
   }
   if ($("#kal-up").checked)
     for (const z of D.zmeny_up) if (z.dpj && z.dpj >= dnes && cinnostSedi(z))
-      ev.push({ d: z.dpj, cas: "", typ: "projednání ÚP", n: `${z.ob} – ${nazevZmeny(z)} (${pop("faze", z.f)})`, kde: z.ob, u: (DOK_PODLE_ID.get(z.ids[z.ids.length - 1]) || {}).u, id: "up-" + z.k });
+      ev.push({ d: z.dpj, cas: "", typ: "projednání ÚP", n: `${z.ob} – ${nazevZmeny(z)} (${pop("faze", z.f)})`, kde: z.ob, u: (DOK_PODLE_ID.get((z.ids || [])[(z.ids || []).length - 1]) || {}).u, id: "up-" + z.k });
   if ($("#kal-drazby").checked)
     for (const n of D.nabidky) if (n.a && n.da && n.da.slice(0, 10) >= dnes && cinnostSedi(n))
       ev.push({ d: n.da.slice(0, 10), cas: (n.da.slice(11, 16) || ""), typ: pop("druh", n.dr), n: n.n, kde: n.ku || n.ok, u: n.u, id: "nab-" + n.k });
@@ -1119,7 +1178,7 @@ function kresliKalendar() {
 }
 napoj(["#kal-vyzvy", "#kal-up", "#kal-drazby", "#kal-prodeje"], kresliKalendar);
 function ics(ev) {
-  const t = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
+  const t = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => "\\" + c).replace(/\r\n|\r|\n/g, "\\n");
   const zalom = (r) => { const out = []; let x = r; while (x.length > 74) { out.push(x.slice(0, 74)); x = " " + x.slice(74); } out.push(x); return out.join("\r\n"); };
   const ted = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
   const radky = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//datasety-prehled//CS", "CALSCALE:GREGORIAN"];
@@ -1311,7 +1370,7 @@ function kresliSignaly(zpet) {
   tabulka($("#t-signaly"), SL_SIG, r, stavG);
   const pr = D.souvislosti.pruniky.slice(0, 400);
   $("#t-pruniky").innerHTML = pr.length ? `<thead><tr><th>Poslední</th><th>Kde / kdo</th><th class="cis">Druhů událostí</th><th>Druhy</th><th>Detail</th></tr></thead><tbody>` +
-    pr.map((x) => `<tr><td>${datum(x.posledni)}<div class="tlumene">od ${datum(x.prvni)}</div></td><td>${x.klic_typ === "ico" ? `<a href="#" data-firma="${esc(x.klic)}">IČO ${esc(x.klic)}</a>` : `parcela ${esc(x.klic.split(":")[1] || x.klic)}`}<div class="tlumene">${odkazObce(x.kod_obce)}</div></td><td class="cis"><b>${esc(x.pocet_zdroju)}</b></td><td>${esc(x.zdroje)}</td><td class="nazev-bunka tlumene">${esc(x.detail).slice(0, 400)}</td></tr>`).join("") + "</tbody>"
+    pr.map((x) => `<tr><td>${datum(x.posledni)}<div class="tlumene">od ${datum(x.prvni)}</div></td><td>${x.klic_typ === "ico" ? `<a href="#" data-firma="${esc(x.klic)}">IČO ${esc(x.klic)}</a>` : `parcela ${esc(x.klic.split(":")[1] || x.klic)}`}<div class="tlumene">${odkazObce(x.kod_obce)}</div></td><td class="cis"><b>${esc(x.pocet_zdroju)}</b></td><td>${esc(x.zdroje)}</td><td class="nazev-bunka tlumene">${esc(String(x.detail || "").slice(0, 400))}</td></tr>`).join("") + "</tbody>"
     : '<tr><td class="tlumene">Zatím žádné průniky.</td></tr>';
 }
 napoj(["#g-hledat", "#g-typ", "#g-kraj", "#g-novost"], kresliSignaly);
@@ -1336,7 +1395,7 @@ function kresliTrh() {
     [cislo(t.zakazek) || "–", "zakázek", `${esc(kraj)} · ${esc(kat)}`],
     [t.median_nabidek ? String(t.median_nabidek).replace(".", ",") : "–", "medián počtu nabídek", t.jedna_nabidka_pct !== undefined && t.jedna_nabidka_pct !== "" ? `${esc(t.jedna_nabidka_pct)} % zakázek s jedinou nabídkou` : ""],
     [t.median_nahskok_pct ? String(t.median_nahskok_pct).replace(".", ",") + " %" : "–", "medián náskoku vítěze", "o kolik byl vítěz levnější než druhý"],
-    [t.zruseno_pct !== undefined && t.zruseno_pct !== "" ? t.zruseno_pct + " %" : "–", "zrušených zakázek", t.median_cena ? "medián ceny " + kcKratce(+t.median_cena) : ""],
+    [t.zruseno_pct !== undefined && t.zruseno_pct !== "" ? esc(t.zruseno_pct) + " %" : "–", "zrušených zakázek", t.median_cena ? "medián ceny " + kcKratce(+t.median_cena) : ""],
     [nav.length ? cislo(Math.round(median(nav))) + " dní" : "–", "PD → vypsání stavby (medián)", nav.length ? `z ${nav.length} párů u stejného zadavatele` : ""],
   ].map(([c, p, s]) => `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
   // trend: posledních 24 měsíců

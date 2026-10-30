@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Datasety – přehled</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<link rel="stylesheet" href="lib/leaflet-1.9.4/leaflet.css">
+<link rel="stylesheet" href="lib/markercluster-1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="lib/markercluster-1.5.3/MarkerCluster.Default.css">
 <link rel="stylesheet" href="styl.css">
 </head>
 <body>
@@ -43,7 +44,7 @@
     </nav>
     <label class="cinnost-volba" title="Zobrazí jen příležitosti, kde bude potřeba vybraná činnost">Hledám práci pro
       <select id="cinnost"><option value="">všechny činnosti</option></select></label>
-    <div class="vpravo"><span id="stari" class="tlumene"></span><button id="odhlasit" class="maly">Zamknout</button></div>
+    <div class="vpravo"><a class="maly odkaz-obchod" href="obchod/">Obchod</a><span id="stari" class="tlumene"></span><button id="odhlasit" class="maly">Zamknout</button></div>
   </header>
 
   <main>
@@ -390,8 +391,8 @@
   </aside>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="lib/leaflet-1.9.4/leaflet.js"></script>
+<script src="lib/markercluster-1.5.3/leaflet.markercluster.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

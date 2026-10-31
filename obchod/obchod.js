@@ -1,7 +1,8 @@
 "use strict";
-/* Obchod – příležitosti z dat. Stejná šifrovaná data jako přehled datasetů (../data.enc), jiný pohled:
-   co prodat, komu, za kolik, proti komu a kde je trh. Nic se neposílá ven; nastavení a „Můj obchod“
-   se ukládají jen v tomto prohlížeči. */
+/* Analytik příležitostí – stejná šifrovaná data jako přehled datasetů (../data.enc), jiný pohled.
+   Zásada: jen to, co je v datech naměřené (počty, částky, data, zdroje). Žádné předpovědi ani váhy „od oka“;
+   kde je k dispozici historie, ukáže se jako historie („v datech dosud: …“) i s velikostí vzorku.
+   Nastavení a sledované položky se ukládají jen v tomto prohlížeči. */
 
 const SOUBOR = "../data.enc";
 const INFO = "../info.json";
@@ -192,20 +193,18 @@ const OBOR_RX = {
   "ekologie a posudky": /biolog|naturov|dendrolog|hlukov|rozptylov|kompenzac|přírod|\bEIA\b|krajinn|\bÚSES\b/i,
   "stavební práce": /realizace|výběr zhotovitele|zhotovitel|stavební práce/i,
 };
-const VAHY_POPIS = { h: "Hodnota zakázky", n: "Naléhavost (blízká lhůta)", k: "Slabá konkurence", s: "Shoda s mými obory", c: "Čerstvost" };
-const VYCHOZI = { obory: OBORY.filter((o) => o !== "stavební práce" && o !== "investice do nemovitostí"), kraje: [], ico: "", vahy: { h: 3, n: 3, k: 2, s: 3, c: 1 } };
-let S = (() => { try { return { ...VYCHOZI, ...JSON.parse(uloz.cti("obchod-nastaveni-v1") || "{}") }; } catch (e) { return { ...VYCHOZI }; } })();
-const ulozS = () => uloz.pis("obchod-nastaveni-v1", JSON.stringify(S));
+const VYCHOZI = { obory: [], kraje: [], ico: "" };          // prázdné = všechno (nic se nepředpokládá)
+let S = (() => { try { return { ...VYCHOZI, ...JSON.parse(uloz.cti("obchod-nastaveni-v2") || "{}") }; } catch (e) { return { ...VYCHOZI }; } })();
+const ulozS = () => uloz.pis("obchod-nastaveni-v2", JSON.stringify(S));
 const mojeKraje = () => S.kraje.length ? S.kraje : null;
 const vUzemi = (kr, filtr) => filtr ? kr === filtr : (!mojeKraje() || !kr || S.kraje.includes(kr));
 const oboryZTextu = (t) => Object.entries(OBOR_RX).filter(([, rx]) => rx.test(t || "")).map(([o]) => o);
-const shoda = (kat) => kat.some((k) => S.obory.includes(k));
+const shoda = (kat) => !S.obory.length || kat.some((k) => S.obory.includes(k));
 
 /* ------------------------------------------------------------------ můj obchod (pipeline) */
-const STAVY = [["novy", "nový", 0.1], ["oslovit", "oslovit", 0.15], ["osloveno", "osloveno", 0.25], ["nabidka", "nabídka podána", 0.4],
-  ["vyhrano", "vyhráno", 1], ["prohrano", "prohráno", 0], ["odlozeno", "odloženo", 0]];
+const STAVY = [["novy", "sleduji"], ["oslovit", "oslovit"], ["osloveno", "osloveno"], ["nabidka", "nabídka podána"],
+  ["vyhrano", "vyhráno"], ["prohrano", "prohráno"], ["odlozeno", "odloženo"]];
 const STAV_POPIS = Object.fromEntries(STAVY.map(([k, p]) => [k, p]));
-const STAV_PST = Object.fromEntries(STAVY.map(([k, , p]) => [k, p]));
 let P = (() => { try { return JSON.parse(uloz.cti("obchod-pipeline-v1") || "{}"); } catch (e) { return {}; } })();
 const ulozP = () => { if (!uloz.pis("obchod-pipeline-v1", JSON.stringify(P))) alert("Uložení se nepodařilo (prohlížeč nepovoluje úložiště)."); };
 function doObchodu(lead, stav) {
@@ -218,13 +217,19 @@ function doObchodu(lead, stav) {
 }
 
 /* ------------------------------------------------------------------ příprava dat */
+let HIST = {}, OBJEVY = [], OBJEV = new Map();
 let LEADY = [], LEAD = new Map(), UCTY = new Map(), ZAK = new Map(), CENY = {}, NABIDEK = {}, KRAJE = [], OPAK = [], SML_OD = "";
 function priprav() {
   for (const k of ["zakazky", "nabidky_zak", "smlouvy", "zamery", "signaly", "tipy", "projekty", "eia"]) D[k] = D[k] || [];
   D.souvislosti = D.souvislosti || {}; for (const k of ["konkurence", "trh"]) D.souvislosti[k] = D.souvislosti[k] || [];
   D.body = D.body || { k: {}, o: {} }; D.obce_up = D.obce_up || {};
   ZAK = new Map(D.zakazky.map((z) => [z.k, z]));
-  SML_OD = D.smlouvy.reduce((m, s) => (s.d && (!m || s.d < m) ? s.d : m), "");   // od kdy registr smluv sbíráme
+  // od kdy registr smluv sbíráme souvisle: první měsíc s aspoň čtvrtinou počtu nejsilnějšího měsíce
+  // (pár starších smluv zveřejněných se zpožděním pokrytí neznamená)
+  const mesice = {}; for (const x of D.smlouvy) if (x.d && x.d <= dnes()) mesice[x.d.slice(0, 7)] = (mesice[x.d.slice(0, 7)] || 0) + 1;
+  const maxM = Math.max(0, ...Object.values(mesice));
+  const prvni = Object.keys(mesice).sort().find((m) => mesice[m] >= maxM / 4);
+  SML_OD = prvni ? prvni + "-01" : "";
   KRAJE = [...new Set([...D.zakazky, ...D.smlouvy].map((x) => x.kr).filter(Boolean))].sort((a, b) => a.localeCompare(b, "cs"));
   // vítězné ceny a počty nabídek podle oboru × kraje (z vysoutěžených zakázek)
   const ceny = {}, nab = {};
@@ -238,12 +243,16 @@ function priprav() {
   CENY = Object.fromEntries(Object.entries(ceny).map(([k, v]) => [k, { med: median(v), n: v.length }]));
   NABIDEK = Object.fromEntries(Object.entries(nab).map(([k, v]) => [k, { med: median(v), jedna: v.filter((x) => x === 1).length / v.length, n: v.length }]));
   OPAK = opakovanePoptavky();
+  HIST = historie();
   sestavLeady();
   sestavUcty();
+  sestavObjevy();
   const st = $("#stari"); st.textContent = "data: " + datum(D.vytvoreno) + " " + String(D.vytvoreno || "").slice(11, 16);
-  for (const s of ["#l-kraj", "#u-kraj", "#k-kraj"]) naplnVyber(s, KRAJE, "moje území");
+  for (const s of ["#l-kraj", "#u-kraj", "#k-kraj", "#o-kraj"]) naplnVyber(s, KRAJE, "všechny kraje");
+  naplnVyber("#o-kat", KATEGORIE_OBJEVU.filter((k) => OBJEVY.some((o) => o.kat === k)), "všechny oblasti");
+  naplnTypy();
   naplnVyber("#c-kraj", KRAJE, "celá ČR");
-  naplnVyber("#c-kat", OBORY.filter((o) => o !== "investice do nemovitostí"), "moje obory");
+  naplnVyber("#c-kat", OBORY.filter((o) => o !== "investice do nemovitostí"), "všechny obory");
   naplnVyber("#m-kat", OBORY.filter((o) => o !== "investice do nemovitostí"), "všechny obory");
   naplnVyber("#l-typ", [...new Set(LEADY.map((l) => l.druh))], "všechny druhy");
   naplnVyber("#p-stav", STAVY.map(([k]) => k), "všechny stavy");
@@ -265,24 +274,32 @@ function konkurenceOdhad(kat, kr) {
 }
 const obecZM = (m) => !m ? "" : m[0] === "o" ? m[1] : ((D.body.k[m[1]] || [])[3] || "");
 const nazevObce = (kod) => !kod ? "" : (D.obce_up[kod] && D.obce_up[kod].on) || (D.body.o[kod] || [])[2] || "";
+const TYP_SIG = {
+  drazba_v_obci_se_zmenou_up: "dražba v obci se změnou ÚP", drazba_parcela_v_zmene_up: "parcela ve změně ÚP", mve_na_prodej: "MVE na prodej",
+  projekt_v_obci_se_zmenou_up: "inzerát v obci se změnou ÚP", pd_hotova_stavba_nevypsana: "PD hotová, stavba nevypsaná",
+  stavba_bez_tdi: "stavba bez technického dozoru", zastupitelstvo_pd_bez_zakazky: "PD projednaná zastupitelstvem",
+  zakazka_zrusena_zatim_nevypsana: "zrušená, zatím nevypsaná", investor_vice_staveb: "investor s více stavbami",
+  kolaudace_bytoveho_domu: "kolaudace bytového domu",
+};
+// popisy signálů: jen co v datech je (bez odhadu, co bude)
 const SIG_LEAD = {
-  zakazka_zrusena_zatim_nevypsana: { druh: "zrušená zakázka", kat: null, proc: "Zakázka byla zrušena a znovu zatím vypsaná není – v půlce případů se vrátí do ~38 dní, často s menší konkurencí." },
-  pd_hotova_stavba_nevypsana: { druh: "navazující práce", kat: ["technický dozor a BOZP", "stavební práce", "projektová dokumentace"], proc: "Projektová dokumentace je hotová, stavba zatím vypsaná není – přijde soutěž na stavbu, TDI a BOZP." },
-  stavba_bez_tdi: { druh: "navazující práce", kat: ["technický dozor a BOZP"], proc: "Stavba je vypsaná, ale TDI/BOZP zadavatel zatím nesoutěžil." },
-  zastupitelstvo_pd_bez_zakazky: { druh: "chystá se", kat: ["projektová dokumentace", "studie"], proc: "Zastupitelstvo jednalo o projektové dokumentaci, zakázka zatím vypsaná není." },
-  uzemni_studie_schvalena: { druh: "chystá se", kat: ["projektová dokumentace", "geodézie", "územní plánování", "investice do nemovitostí"], proc: "Schválená územní studie – plocha je připravená na parcelaci, sítě a projekty domů." },
-  uzemni_studie_zadana: { druh: "chystá se", kat: ["územní plánování", "studie"], proc: "Obec zadala územní studii." },
-  eia_zamer: { druh: "chystá se", kat: ["ekologie a posudky", "projektová dokumentace"], proc: "Záměr v posuzování vlivů (EIA) – investor potřebuje posudky a dokumentaci." },
-  stavba_a_priroda: { druh: "chystá se", kat: ["ekologie a posudky"], proc: "Stavba v katastru s Naturou / ZCHÚ – typicky biologické nebo naturové hodnocení." },
-  kompenzacni_opatreni: { druh: "chystá se", kat: ["ekologie a posudky"], proc: "Dokument zmiňuje kompenzační / náhradní opatření." },
-  projekt_financovani: { druh: "investor", kat: ["projektová dokumentace", "technický dozor a BOZP"], proc: "Developerský projekt financovaný crowdfundingem – investor staví." },
-  kolaudace_bytoveho_domu: { druh: "investor", kat: ["energetika", "TZB a instalace"], proc: "Kolaudace bytového domu – nové SVJ, PENB, revize, reklamace." },
-  investor_vice_staveb: { druh: "investor", kat: ["projektová dokumentace", "technický dozor a BOZP", "stavební práce"], proc: "Stejný investor má víc staveb – opakovaný zákazník." },
-  drazba_v_obci_se_zmenou_up: { druh: "investice", kat: ["investice do nemovitostí"], proc: "Dražba / nabídka v obci, kde se mění územní plán." },
-  drazba_parcela_v_zmene_up: { druh: "investice", kat: ["investice do nemovitostí"], proc: "Dražená parcela je přímo ve změně územního plánu." },
-  nabidka_pod_cenou_okresu: { druh: "investice", kat: ["investice do nemovitostí"], proc: "Cena za m² pod 70 % mediánu okresu." },
-  mve_na_prodej: { druh: "investice", kat: ["investice do nemovitostí"], proc: "Vodní elektrárna na prodej." },
-  projekt_v_obci_se_zmenou_up: { druh: "investice", kat: ["investice do nemovitostí"], proc: "Projekt / pozemek z inzerce v obci se změnou ÚP." },
+  zakazka_zrusena_zatim_nevypsana: { druh: "zrušená zakázka", kat: null, proc: "Zakázka byla zrušena; nové vypsání stejného zadavatele zatím v datech není." },
+  pd_hotova_stavba_nevypsana: { druh: "navazující poptávka", kat: ["technický dozor a BOZP", "stavební práce", "projektová dokumentace"], proc: "Zadavatel má smlouvu na projektovou dokumentaci; zakázka na stavbu od něj zatím v datech není." },
+  stavba_bez_tdi: { druh: "navazující poptávka", kat: ["technický dozor a BOZP"], proc: "Stavba je vypsaná; zakázka na technický dozor od stejného zadavatele v datech není." },
+  zastupitelstvo_pd_bez_zakazky: { druh: "projednáno", kat: ["projektová dokumentace", "studie"], proc: "Zastupitelstvo projednalo projektovou dokumentaci; zakázka ani smlouva na ni v datech není." },
+  uzemni_studie_schvalena: { druh: "projednáno", kat: ["projektová dokumentace", "geodézie", "územní plánování", "investice do nemovitostí"], proc: "Obec schválila možnost využití územní studie." },
+  uzemni_studie_zadana: { druh: "projednáno", kat: ["územní plánování", "studie"], proc: "Obec zadala územní studii." },
+  eia_zamer: { druh: "záměr v řízení", kat: ["ekologie a posudky", "projektová dokumentace"], proc: "Záměr je v posuzování vlivů na životní prostředí (IS EIA)." },
+  stavba_a_priroda: { druh: "záměr v řízení", kat: ["ekologie a posudky"], proc: "Stavba v katastru, kde je Natura 2000 nebo zvláště chráněné území." },
+  kompenzacni_opatreni: { druh: "záměr v řízení", kat: ["ekologie a posudky"], proc: "Dokument zmiňuje kompenzační / náhradní opatření (citace v popisu)." },
+  projekt_financovani: { druh: "investor", kat: ["projektová dokumentace", "technický dozor a BOZP"], proc: "Developerský projekt ve financování přes crowdfunding." },
+  kolaudace_bytoveho_domu: { druh: "investor", kat: ["energetika", "TZB a instalace"], proc: "Kolaudace bytového domu." },
+  investor_vice_staveb: { druh: "investor", kat: ["projektová dokumentace", "technický dozor a BOZP", "stavební práce"], proc: "Stejný investor má v datech víc staveb." },
+  drazba_v_obci_se_zmenou_up: { druh: "nemovitost", kat: ["investice do nemovitostí"], proc: "Dražba / nabídka v obci, kde probíhá změna územního plánu." },
+  drazba_parcela_v_zmene_up: { druh: "nemovitost", kat: ["investice do nemovitostí"], proc: "Dražená parcela je uvedená ve změně územního plánu." },
+  nabidka_pod_cenou_okresu: { druh: "nemovitost", kat: ["investice do nemovitostí"], proc: "Cena za m² pod 70 % mediánu okresu." },
+  mve_na_prodej: { druh: "nemovitost", kat: ["investice do nemovitostí"], proc: "Vodní elektrárna na prodej (spárovaná s licencí ERÚ)." },
+  projekt_v_obci_se_zmenou_up: { druh: "nemovitost", kat: ["investice do nemovitostí"], proc: "Projekt / pozemek z inzerce v obci se změnou ÚP." },
 };
 function sestavLeady() {
   const L = [], ted = dnes(), d180 = posun(-180), d60 = posun(-60);
@@ -292,7 +309,7 @@ function sestavLeady() {
     if (!lh || lh < ted || z.s === "zrušen") continue;
     const kat = seznam(z.kat), mojeKat = kat.filter((k) => S.obory.includes(k)), odh = odhadCeny(mojeKat.length ? mojeKat : kat, z.kr), konk = konkurenceOdhad(kat, z.kr);
     L.push({ id: "z:" + z.k, druh: "veřejná zakázka", n: z.c ? `${z.n} – ${z.c}` : z.n, kdo: z.zd, ico: z.zi, kr: z.kr, obec: obecZM(z.m), kat,
-      h: odh ? odh.med : null, hz: odh ? `medián vítězných cen ${kat.join(", ")}${odh.kraj ? " v kraji" : " v ČR"} (${odh.n} zakázek)` : "",
+      h: odh ? odh.med : null, hz: odh ? `medián vítězných cen (${odh.n} vysoutěžených zakázek, ${odh.kraj ? "stejný kraj" : "celá ČR"})` : "",
       termin: lh, terminPopis: "lhůta pro nabídky " + datum(lh) + (z.lh.length > 10 ? " " + z.lh.slice(11, 16) : ""),
       konk: konk ? konk.med : null, proc: `${z.dr || "zakázka"}${z.rez ? " · " + z.rez : ""}. Lhůta ${datum(lh)}.`, u: z.u, pz: z.pz || z.dz, zdroj: z });
   }
@@ -303,9 +320,9 @@ function sestavLeady() {
     if (!kat.length) continue;
     const proc = { zamer: "Záměr stavby", eia: "Stavba v EIA", stanovisko: "Environmentální stanovisko", rizeni: "Zahájeno řízení o povolení", povoleni: "Stavba povolena" }[x.f];
     L.push({ id: "s:" + x.k, druh: "stavba v přípravě", n: x.n, kdo: x.st === "fyzicka_osoba" ? "soukromá osoba" : x.sn, ico: x.si, kr: x.kr, obec: obecZM(x.m), kat,
-      h: x.hon || null, hz: x.hon ? `odhad honoráře z obestavěného prostoru (${x.oz === "m3" ? "m³" : "z plochy"})` : "",
-      termin: null, terminPopis: `${proc} ${datum(x.df)}`, konk: null,
-      proc: `${proc} (${datum(x.df)}). Navazuje: ${x.nc || "—"}.${x.cena ? " Stavba cca " + kcK(x.cena) + "." : ""}`, u: "", pz: x.pd, zdroj: x });
+      h: null, hz: "", termin: null, terminPopis: `${proc} ${datum(x.df)}`, konk: null,
+      proc: `${proc} (${datum(x.df)}).` + [x.op ? ` Obestavěný prostor ${cislo(x.op)} m³.` : "", x.zp ? ` Zastavěná plocha ${cislo(x.zp)} m².` : "",
+        x.pb ? ` Bytů ${x.pb}.` : "", x.nd > 1 ? ` Dokumentů k záměru: ${x.nd}.` : ""].join(""), u: "", pz: x.pd, zdroj: x });
   }
   // 3) signály z kombinací
   for (const s of D.signaly) {
@@ -315,10 +332,9 @@ function sestavLeady() {
     let kat = def.kat || (z ? seznam(z.kat) : oboryZTextu(s.p));
     if (s.t === "zakazka_zrusena_zatim_nevypsana" && z) kat = seznam(z.kat);
     const odh = kat.length ? odhadCeny(kat.filter((k) => k !== "investice do nemovitostí"), s.kr) : null;
-    let termin = null, tp = "";
-    if (s.t === "zakazka_zrusena_zatim_nevypsana" && z && z.dz) { termin = iso(new Date(new Date(z.dz).getTime() + 38 * 864e5)); tp = "nové vypsání čekejte kolem " + datum(termin); }
+    const termin = null, tp = HIST[s.t] ? HIST[s.t].text : "";
     L.push({ id: "g:" + s.id, druh: def.druh, n: s.p.slice(0, 220), kdo: z ? z.zd : (s.on || ""), ico: z ? z.zi : (/^\d{8}$/.test(s.k) ? s.k : ""),
-      kr: s.kr, obec: s.o, kat, h: odh && def.druh !== "investice" ? odh.med : null, hz: odh ? "medián vítězných cen oboru" : "",
+      kr: s.kr, obec: s.o, kat, h: odh && def.druh !== "nemovitost" ? odh.med : null, hz: odh ? `medián vítězných cen oboru (${odh.n} zakázek)` : "",
       termin, terminPopis: tp, konk: null, proc: def.proc, u: s.u, pz: s.pz || s.d, zdroj: s });
   }
   // 4) firmy se signály (soukromí klienti)
@@ -333,7 +349,7 @@ function sestavLeady() {
   for (const p of D.projekty) {
     if (p.ze !== "CZ" || !p.a || (p.pz || "") < d60) continue;
     const kat = p.sm === "nabidka" ? ["investice do nemovitostí"] : oboryZTextu(p.nc + " " + p.n);
-    L.push({ id: "p:" + p.k, druh: p.sm === "financovani" ? "investor" : p.sm === "poptavka" ? "poptávka z inzerce" : "investice",
+    L.push({ id: "p:" + p.k, druh: p.sm === "financovani" ? "investor" : p.sm === "poptavka" ? "poptávka z inzerce" : "nemovitost",
       n: p.n, kdo: p.mi || "", ico: "", kr: "", obec: obecZM(p.m), kat, h: p.c && p.me !== "EUR" && p.me !== "PLN" ? p.c : null,
       hz: p.c ? "cena v inzerátu" : "", termin: null, terminPopis: "", konk: null,
       proc: `${p.sm === "nabidka" ? "Nabízí se" : p.sm === "poptavka" ? "Shání se" : "Financuje se"}: ${String(p.t || "").replace(/_/g, " ")}${p.nf ? ", fáze " + p.nf.replace(/_/g, " ") : ""}.`,
@@ -341,7 +357,6 @@ function sestavLeady() {
   }
   for (const l of L) { if (!l.kr && l.obec) l.kr = krajObce(l.obec); }
   LEADY = L; LEAD = new Map(L.map((l) => [l.id, l]));
-  prepocitejSkore();
 }
 const KRAJ_OBCE = new Map();
 function krajObce(kod) {
@@ -350,25 +365,6 @@ function krajObce(kod) {
     for (const [o, v] of Object.entries(D.obce_up)) if (v.kr && !KRAJ_OBCE.has(o)) KRAJ_OBCE.set(o, v.kr);
   }
   return KRAJ_OBCE.get(kod) || "";
-}
-function prepocitejSkore() {
-  const w = S.vahy, sumW = Object.values(w).reduce((a, b) => a + Number(b), 0) || 1;
-  for (const l of LEADY) {
-    const h = l.h ? Math.min(1, Math.max(0, (Math.log10(l.h) - 4) / 3.5)) : 0.3;           // 10 tis. → 0, ~30 mil. → 1
-    const d = l.termin ? dniDo(l.termin) : null;
-    const n = d == null ? 0.35 : d < 0 ? 0.1 : d <= 7 ? 1 : d <= 21 ? 0.75 : d <= 45 ? 0.5 : 0.3;
-    const k = l.konk == null ? 0.5 : Math.max(0, 1 - (l.konk - 1) / 5);                       // 1 nabídka → 1, 6+ → 0
-    const s = shoda(l.kat) ? 1 : 0.15;
-    const st = l.pz ? -dniDo(l.pz) : 999;
-    const c = st <= 7 ? 1 : st <= 30 ? 0.6 : st <= 90 ? 0.35 : 0.15;
-    l.cast = { h: w.h * h, n: w.n * n, k: w.k * k, s: w.s * s, c: w.c * c };
-    l.skore = Math.round(100 * (l.cast.h + l.cast.n + l.cast.k + l.cast.s + l.cast.c) / sumW);
-  }
-}
-function skoreHtml(l) {
-  const sumW = Object.values(S.vahy).reduce((a, b) => a + Number(b), 0) || 1, w = 64;
-  const tip = Object.entries(l.cast).map(([k, v]) => `${VAHY_POPIS[k]}: ${Math.round(100 * v / sumW)}`).join("\n");
-  return `<span class="skore" title="${esc(tip)}">${l.skore}<span class="skore-pruh">${Object.entries(l.cast).map(([k, v]) => `<i class="sk-${k}" style="width:${(w * v / sumW).toFixed(1)}px"></i>`).join("")}</span></span>`;
 }
 function opakovanePoptavky() {
   const slova = (t) => new Set((String(t).toLowerCase().match(/[a-zá-ž0-9]{3,}/g) || []).filter((x) => !STOP.has(x)));
@@ -402,10 +398,184 @@ function opakovanePoptavky() {
 }
 const STOP = new Set("pro na v ve s se z ze do od o u a obce města městyse obec město akce stavba stavby projektová dokumentace pd zpracování zhotovení rekonstrukce oprava opravy úpravy stavební úpravy".split(" "));
 
+/* ------------------------------------------------------------------ historie (co se v datech už stalo) */
+// Ne předpověď: kolikrát a za jak dlouho k něčemu v datech dosud došlo, s velikostí vzorku.
+function historie() {
+  const H = {}, hranice = posun(-30);
+  // zrušené zakázky: vypsal je stejný zadavatel znovu (podobný název, do roka)?
+  const dny = [];
+  let zrusenych = 0, znovu = 0;
+  for (const g of OPAK) g.z.forEach((z, i) => {
+    if (z.s !== "zrušen" || !z.dz || z.dz > hranice) return;
+    const dalsi = g.z.slice(i + 1).find((x) => x.dz > z.dz);
+    if (dalsi) { znovu++; dny.push((new Date(dalsi.dz) - new Date(z.dz)) / 864e5); }
+  });
+  for (const z of D.zakazky) if (z.s === "zrušen" && z.dz && z.dz <= hranice) zrusenych++;
+  if (zrusenych >= 10) H.zakazka_zrusena_zatim_nevypsana = {
+    n: zrusenych, k: znovu, med: median(dny),
+    text: `v datech dosud: ${znovu} z ${zrusenych} zrušených zakázek (starších 30 dní) stejný zadavatel znovu vypsal` + (dny.length ? `, medián ${Math.round(median(dny))} dní` : ""),
+  };
+  // projektová dokumentace -> vypsání stavby
+  const nav = (D.souvislosti.navaznosti || []).map((x) => +x.zpozdeni_dni).filter((x) => x >= 0);
+  if (nav.length >= 10) H.pd_hotova_stavba_nevypsana = {
+    n: nav.length, med: median(nav),
+    text: `v datech dosud: u ${nav.length} dvojic PD → stavba uplynulo od smlouvy na PD do vypsání stavby medián ${Math.round(median(nav))} dní (polovina mezi ${Math.round(kvantil(nav, 0.25))} a ${Math.round(kvantil(nav, 0.75))})`,
+  };
+  return H;
+}
+
+/* ------------------------------------------------------------------ objevy */
+// Každý objev = kombinace naměřených faktů. Síla dokladu podle velikosti vzorku / počtu nezávislých zdrojů.
+const DRUH_NAB = { aukce_stat: "aukce státu", nabidka_statni_organizace: "nabídka státní organizace", drazba_dobrovolna: "dražba dobrovolná",
+  drazba_nedobrovolna: "dražba nedobrovolná", drazba_exekucni: "dražba exekuční", drazba_insolvence: "dražba v insolvenci", nabidka_stat_prodej: "prodej státu" };
+const DOKLAD = (n, zdroju) => zdroju ? (zdroju >= 3 ? "silný" : zdroju === 2 ? "střední" : "malý") : (n >= 20 ? "silný" : n >= 8 ? "střední" : "malý");
+const KATEGORIE_OBJEVU = ["Nemovitosti", "Trhy", "Zákazníci", "Navazující poptávka", "Území", "Inzerce"];
+function sestavObjevy() {
+  const O = [], ted = dnes(), r1 = posun(-365);
+  const pridej = (o) => { o.kr = o.kr || (o.obec ? krajObce(o.obec) : ""); O.push(o); };
+  const kdeObce = (m) => { const o = obecZM(m); return { obec: o, kde: nazevObce(o) }; };
+  const obdobi = SML_OD ? `od ${datum(SML_OD)}` : "";
+
+  // 1) nemovitosti pod cenou okresu (aktivní nabídky × ceny pozemků z historie prodejů)
+  const ceny = new Map((D.souvislosti.ceny_pozemku || []).map((c) => [c.okres + "|" + c.druh_pozemku, c]));
+  for (const x of D.nabidky || []) {
+    if (!x.a || !(x.cm > 0) || !(x.v > 0) || x.t !== "pozemek" || /pronáj|nájem|pacht/i.test(x.n)) continue;
+    const c = ceny.get(x.ok + "|" + (x.dp || "neuvedeno"));
+    if (!c || +c.pocet < 5 || !(x.cm <= +c.p25_kc_m2)) continue;
+    const rozdil = (+c.median_kc_m2 - x.cm) * x.v;
+    pridej({ id: "o:nem:" + x.k, kat: "Nemovitosti", typ: "pod cenou okresu", n: x.n, ...kdeObce(x.m), kc: rozdil, kcPopis: "rozdíl proti mediánu okresu × výměra",
+      fakta: [`${x.cm.toLocaleString("cs-CZ")} Kč/m² · ${cislo(x.v)} m² · ${kc(x.cv || x.cm * x.v)} (${esc(DRUH_NAB[x.dr] || String(x.dr || x.z).replace(/_/g, " "))})`,
+        `okres ${esc(x.ok)}, ${esc(c.druh_pozemku)}: medián ${(+c.median_kc_m2).toLocaleString("cs-CZ")} Kč/m², dolní čtvrtina ${(+c.p25_kc_m2).toLocaleString("cs-CZ")} Kč/m² (${c.pocet} prodejů ${datum(c.od)} – ${datum(c.do)}, ${esc(c.zdroje)})`,
+        x.du ? `ukončení ${datum(x.du)}` : "", x.pm ? "kulturní památka" : "", x.po ? `podíl ${esc(x.po)}` : ""].filter(Boolean),
+      vzorek: +c.pocet, doklad: DOKLAD(+c.pocet), odkazy: [{ t: "nabídka", u: x.u }], d: x.pz });
+  }
+  // 2) více nezávislých zdrojů o stejné parcele / firmě
+  for (const x of D.souvislosti.pruniky || []) {
+    const z = +x.pocet_zdroju; if (z < 2) continue;
+    pridej({ id: "o:pr:" + x.klic, kat: "Nemovitosti", typ: "shoda zdrojů", obec: x.kod_obce, kde: nazevObce(x.kod_obce),
+      n: (x.klic_typ === "ico" ? "Firma IČO " + x.klic : "Parcela " + (x.klic.split(":")[1] || x.klic)) + (nazevObce(x.kod_obce) ? " – " + nazevObce(x.kod_obce) : ""),
+      kc: null, fakta: [`${z} nezávislé zdroje: ${esc(x.zdroje)}`, ...String(x.detail || "").split(" | ").slice(0, 6).map(esc), `${datum(x.prvni)} – ${datum(x.posledni)}`],
+      vzorek: z, doklad: DOKLAD(0, z), odkazy: [], d: x.posledni, ico: x.klic_typ === "ico" ? x.klic : "" });
+  }
+  // 3) nemovitostní signály
+  for (const g of D.signaly) {
+    if (!["drazba_v_obci_se_zmenou_up", "drazba_parcela_v_zmene_up", "mve_na_prodej", "projekt_v_obci_se_zmenou_up"].includes(g.t)) continue;
+    pridej({ id: "o:sg:" + g.id, kat: "Nemovitosti", typ: TYP_SIG[g.t], n: g.p.slice(0, 160), obec: g.o, kde: g.on, kr: g.kr,
+      kc: null, fakta: [esc(SIG_LEAD[g.t].proc), esc(g.p), `zdroje: ${esc(g.z)}`], vzorek: 2, doklad: "střední", odkazy: [{ t: "zdroj", u: g.u }], d: g.d });
+  }
+  // 4) trhy s jedinou nabídkou (vysoutěžené zakázky podle oboru × kraje)
+  const bunky = new Map();
+  for (const z of D.zakazky) {
+    if (!z.kr || !(z.pn > 0)) continue;
+    for (const k of seznam(z.kat)) {
+      const key = k + "|" + z.kr; if (!bunky.has(key)) bunky.set(key, { k, kr: z.kr, z: [] });
+      bunky.get(key).z.push(z);
+    }
+  }
+  for (const b of bunky.values()) {
+    const n = b.z.length, jedna = b.z.filter((z) => z.pn === 1);
+    if (n < 8 || jedna.length / n < 0.35) continue;
+    const vit = new Map();                         // podle IČO: „podnikající fyzická osoba“ je víc různých lidí
+    for (const z of b.z) if (z.v || z.vi) { const key = z.vi || z.v, v = vit.get(key) || [z.v + (z.vi && z.v === "podnikající fyzická osoba" ? " IČO " + z.vi : ""), 0]; v[1]++; vit.set(key, v); }
+    const top = [...vit.values()].sort((a, c) => c[1] - a[1]).slice(0, 3);
+    const objem = b.z.reduce((s2, z) => s2 + (z.cb || 0), 0);
+    pridej({ id: "o:tr1:" + b.k + "|" + b.kr, kat: "Trhy", typ: "slabá konkurence", n: `${b.k} – ${b.kr}`, kr: b.kr, kc: objem, kcPopis: "vysoutěženo celkem (bez DPH)",
+      fakta: [`${jedna.length} z ${n} zakázek s počtem nabídek mělo jedinou nabídku (${Math.round(100 * jedna.length / n)} %)`,
+        `medián počtu nabídek ${String(median(b.z.map((z) => z.pn))).replace(".", ",")}, medián vítězné ceny ${kcK(median(b.z.map((z) => z.cb)))}`,
+        top.length ? `nejčastější vítězové: ${top.map(([v, c]) => `${esc(v)} (${c}×)`).join(", ")}` : ""].filter(Boolean),
+      vzorek: n, doklad: DOKLAD(n), odkazy: [], d: b.z.reduce((m, z) => (z.dz > m ? z.dz : m), ""), trh: b.k });
+  }
+  // 5) koncentrované trhy (registr smluv)
+  const sml = new Map();
+  for (const x of D.smlouvy) {
+    if (!x.kr || !x.d || x.d > ted || x.d < SML_OD) continue;
+    for (const k of seznam(x.kat)) {
+      const key = k + "|" + x.kr; if (!sml.has(key)) sml.set(key, { k, kr: x.kr, h: 0, n: 0, dod: new Map() });
+      const b = sml.get(key); b.h += x.h || 0; b.n++;
+      const dk = x.di || x.do; const d = b.dod.get(dk) || { n: x.do, ico: x.di, h: 0, c: 0 }; d.h += x.h || 0; d.c++; b.dod.set(dk, d);
+    }
+  }
+  for (const b of sml.values()) {
+    if (b.n < 10 || !b.h) continue;
+    const dod = [...b.dod.values()].sort((a, c) => c.h - a.h), podil = dod[0].h / b.h;
+    // dominance = opakovaně, ne jedna velká zakázka: aspoň 5 smluv a pětina všech smluv
+    if (podil < 0.5 || dod[0].c < 5 || dod[0].c / b.n < 0.2) continue;
+    pridej({ id: "o:tr2:" + b.k + "|" + b.kr, kat: "Trhy", typ: "jeden dominantní dodavatel", n: `${b.k} – ${b.kr}`, kr: b.kr, kc: b.h, kcPopis: `objem smluv ${obdobi}`,
+      fakta: [`${b.n} smluv za ${kcK(b.h)} (${obdobi})`, `${esc(dod[0].n)} má ${Math.round(100 * podil)} % objemu (${dod[0].c} smluv)`,
+        `dodavatelů celkem ${dod.length}; další: ${dod.slice(1, 4).map((d) => `${esc(d.n)} ${Math.round(100 * d.h / b.h)} %`).join(", ") || "—"}`],
+      vzorek: dod[0].c, doklad: DOKLAD(dod[0].c), odkazy: [], d: "", firma: dod[0].ico, trh: b.k });
+  }
+  // 6) opakované poptávky
+  for (const g of OPAK) {
+    if (g.pocet < 3) continue;
+    const ceny2 = g.z.map((z) => z.cb).filter((x) => x > 0);
+    pridej({ id: "o:op:" + g.z[0].k, kat: "Zákazníci", typ: "opakovaná poptávka", n: g.n, kr: g.kr, kc: ceny2.reduce((a, b) => a + b, 0) || null, kcPopis: "součet vysoutěžených cen ve skupině",
+      fakta: [`${esc(g.zd)} vypsal podobnou zakázku ${g.pocet}× (${datum(g.od)} – ${datum(g.do)}), zrušeno ${g.zrus}×, zadáno ${g.zad}×`,
+        ceny2.length ? `vítězné ceny: ${ceny2.map(kcK).join(", ")}` : "",
+        g.vitez ? `poslední vítěz: ${esc(g.vitez)}` : "",
+        `zakázky: ${g.z.slice(-4).map((z) => `${datum(z.dz)} ${esc(z.s)}`).join("; ")}`].filter(Boolean),
+      vzorek: g.pocet, doklad: g.pocet >= 5 ? "silný" : g.pocet >= 3 ? "střední" : "malý", odkazy: [{ t: "poslední vypsání", u: g.u }], d: g.do, ico: g.zi });
+  }
+  // 7) zákazník s jedním dodavatelem
+  for (const u of UCTY.values()) {
+    if (u.smluv < 5 || !u.utrata) continue;
+    const d = [...u.dod.values()].sort((a, c) => c.h - a.h)[0];
+    if (!d || d.h / u.utrata < 0.7 || d.c < 3 || d.c / u.smluv < 0.5) continue;   // opakovaně týž dodavatel, ne jedna velká smlouva
+    pridej({ id: "o:zd:" + u.ico, kat: "Zákazníci", typ: "jeden dodavatel", n: u.n, kr: u.kr, kc: u.utrata, kcPopis: `útrata ${obdobi}`,
+      fakta: [`${u.smluv} smluv za ${kcK(u.utrata)} (${obdobi})`, `${esc(d.n)}: ${Math.round(100 * d.h / u.utrata)} % objemu (${d.c} smluv)`,
+        `za co: ${Object.entries(u.kat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${esc(k)} ${kcK(v)}`).join(", ")}`,
+        u.otevrene ? `teď otevřených zakázek: ${u.otevrene}` : ""].filter(Boolean),
+      vzorek: d.c, doklad: DOKLAD(d.c), odkazy: [], d: u.posledni, ico: u.ico });
+  }
+  // 8) navazující poptávka (fakt + historie)
+  for (const g of D.signaly) {
+    if (!["pd_hotova_stavba_nevypsana", "stavba_bez_tdi", "zastupitelstvo_pd_bez_zakazky", "zakazka_zrusena_zatim_nevypsana"].includes(g.t)) continue;
+    if ((g.d || "") < posun(-365)) continue;
+    const z = ZAK.get(g.k), h = HIST[g.t], zdroju = String(g.z || "").split(" + ").filter(Boolean).length;
+    const cena = z && g.t === "stavba_bez_tdi" ? z.cb : null;    // u ostatních by cena patřila jiné zakázce, než o kterou jde
+    pridej({ id: "o:nv:" + g.id, kat: "Navazující poptávka", typ: TYP_SIG[g.t], n: z ? (z.c ? z.n + " – " + z.c : z.n) : g.p.slice(0, 140), obec: g.o, kde: g.on, kr: g.kr,
+      kc: cena || null, kcPopis: cena ? "cena vysoutěžené stavby" : "",
+      fakta: [esc(SIG_LEAD[g.t].proc), esc(g.p), h ? esc(h.text) + ` (vzorek ${cislo(h.n)})` : ""].filter(Boolean),
+      vzorek: zdroju, doklad: DOKLAD(0, zdroju), odkazy: [{ t: "zdroj", u: g.u }], d: g.d,
+      ico: z ? z.zi : (/^\d{8}$/.test(g.k) ? g.k : ""), lead: "g:" + g.id });
+  }
+  for (const g of D.signaly) {
+    if (g.t !== "investor_vice_staveb" && g.t !== "kolaudace_bytoveho_domu") continue;
+    pridej({ id: "o:iv:" + g.id, kat: "Zákazníci", typ: TYP_SIG[g.t], n: g.p.slice(0, 160), obec: g.o, kde: g.on, kr: g.kr,
+      kc: null, fakta: [esc(g.p), `zdroje: ${esc(g.z)}`], vzorek: 2, doklad: "střední", odkazy: [{ t: "zdroj", u: g.u }], d: g.d, ico: /^\d{8}$/.test(g.k) ? g.k : "" });
+  }
+  // 9) území: kde se v okrese staví a mění plány (počty z desek, ÚP, dražeb)
+  for (const x of D.souvislosti.pipeline || []) {
+    const stavby = +x.stavby_zamer + +x.stavby_rizeni + +x.stavby_povoleni + +x.stavby_kolaudace;
+    if (stavby + +x.up_probiha < 10) continue;
+    pridej({ id: "o:uz:" + x.okres, kat: "Území", typ: "aktivita v okrese", n: `Okres ${x.okres}`, kr: x.kraj, kc: null,
+      fakta: [`stavby z úředních desek: záměr ${x.stavby_zamer}, řízení ${x.stavby_rizeni}, povolení ${x.stavby_povoleni}, kolaudace ${x.stavby_kolaudace}`,
+        `územní plány: rozpracované změny ${x.up_probiha}, vydané za rok ${x.up_vydano_rok}`,
+        `prodeje obcí za rok ${x.prodeje_obci_rok}, aktivní nabídky majetku ${x.nabidky_aktivni}, otevřené zakázky ${x.zakazky_otevrene}`],
+      vzorek: stavby, doklad: DOKLAD(stavby), odkazy: [], d: "", razeni: stavby });
+  }
+  // 10) inzerce: co se shání víc, než nabízí
+  const pt = new Map();
+  for (const p of D.projekty) {
+    if (!p.a) continue;
+    const t = String(p.t || "jiné").replace(/_/g, " "), v = pt.get(t) || { t, pop: [], nab: 0 };
+    if (p.sm === "poptavka") v.pop.push(p); else if (p.sm === "nabidka") v.nab++; pt.set(t, v);
+  }
+  for (const v of pt.values()) {
+    if (v.pop.length < 5 || v.pop.length < 2 * Math.max(1, v.nab)) continue;
+    const zeme = [...new Set(v.pop.map((p) => p.ze))].join(", ");
+    pridej({ id: "o:in:" + v.t, kat: "Inzerce", typ: "poptávka převyšuje nabídku", n: `${v.t}: shání se ${v.pop.length}×, nabízí ${v.nab}×`, kc: null,
+      fakta: [`aktivní poptávky ${v.pop.length}, nabídky ${v.nab} (${esc(zeme)})`,
+        ...v.pop.slice(0, 4).map((p) => `${datum(p.d || p.pz)} ${esc(p.n.slice(0, 90))}${p.c ? " · " + cislo(p.c) + " " + esc(p.me || "Kč") : ""}`)],
+      vzorek: v.pop.length + v.nab, doklad: DOKLAD(v.pop.length + v.nab), odkazy: v.pop.slice(0, 4).map((p) => ({ t: p.n.slice(0, 40), u: p.u })), d: "" });
+  }
+  OBJEVY = O; OBJEV = new Map(O.map((o) => [o.id, o]));
+}
+
 /* ------------------------------------------------------------------ zákazníci (účty) */
 function sestavUcty() {
   UCTY = new Map();
-  const od = posun(-3 * 365), ted = dnes();
+  const od = SML_OD > posun(-3 * 365) ? SML_OD : posun(-3 * 365), ted = dnes();
   const ucet = (ico, n, kr) => {
     if (!ico) return null;
     if (!UCTY.has(ico)) UCTY.set(ico, { ico, n: n || ico, kr: kr || "", utrata: 0, smluv: 0, kat: {}, dod: new Map(), posledni: "", zak: [], stavby: [], otevrene: 0, opak: 0 });
@@ -432,7 +602,7 @@ function sestavUcty() {
 }
 
 /* ------------------------------------------------------------------ záložky */
-let ZALOZKA = "dnes";
+let ZALOZKA = "objevy";
 const vykreslene = new Set();
 $("#zalozky").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-z]"); if (!b) return;
@@ -442,13 +612,13 @@ $("#zalozky").addEventListener("click", (e) => {
   uloz.pis("obchod-zalozka", ZALOZKA);
   KRESLI[ZALOZKA]();
 });
-const KRESLI = { dnes: kresliDnes, leady: kresliLeady, pipeline: kresliPipeline, ucty: kresliUcty, konkurence: kresliKonkurenci, cena: kresliCenu, trhy: kresliTrhy, nastaveni: kresliNastaveni };
+const KRESLI = { objevy: kresliObjevy, leady: kresliLeady, pipeline: kresliPipeline, ucty: kresliUcty, konkurence: kresliKonkurenci, cena: kresliCenu, trhy: kresliTrhy, nastaveni: kresliNastaveni };
 function vykresliVse(obnova) {
   if (!obnova) { const z = uloz.cti("obchod-zalozka"); const b = z && document.querySelector(`#zalozky button[data-z="${z}"]`); if (b) { b.click(); return; } }
   KRESLI[ZALOZKA]();
 }
 
-/* ------------------------------------------------------------------ DNES */
+/* ------------------------------------------------------------------ OBJEVY */
 function filtrLeadu(volby = {}) {
   const h = volby.h ?? "", typ = volby.typ ?? "", kr = volby.kr ?? "", min = volby.min ?? 0, moje = volby.moje ?? true, skryt = volby.skryt ?? true;
   return LEADY.filter((l) => (!typ || l.druh === typ) && vUzemi(l.kr, kr) && (!min || (l.h || 0) >= min) && (!moje || shoda(l.kat))
@@ -457,47 +627,84 @@ function filtrLeadu(volby = {}) {
 function kartaLeadu(l) {
   return `<div class="polozka"><span class="stitek${l.termin && dniDo(l.termin) <= 7 ? " horko" : ""}">${esc(l.druh)}</span>
     <div><a href="#" data-lead="${esc(l.id)}">${esc(l.n)}</a></div>
-    <div class="meta">${skoreHtml(l)} · ${esc(l.kdo || "")}${l.obec ? " · " + esc(nazevObce(l.obec)) : l.kr ? " · " + esc(l.kr) : ""}${l.h ? " · cca " + kcK(l.h) : ""}${l.terminPopis ? " · " + esc(l.terminPopis) : ""}</div></div>`;
+    <div class="meta">${esc(l.kdo || "")}${l.obec ? " · " + esc(nazevObce(l.obec)) : l.kr ? " · " + esc(l.kr) : ""}${l.h ? " · srovnatelné ceny " + kcK(l.h) : ""}${l.terminPopis ? " · " + esc(l.terminPopis) : ""}</div></div>`;
 }
-function kresliDnes() {
-  const t7 = posun(-7), moje = filtrLeadu({ skryt: false });
-  const nove = moje.filter((l) => (l.pz || "") >= t7);
-  const otevrene = moje.filter((l) => l.druh === "veřejná zakázka");
-  const vP = Object.values(P), aktivni = vP.filter((p) => !["vyhrano", "prohrano", "odlozeno"].includes(p.stav));
-  const vazena = aktivni.reduce((s, p) => s + (p.h || 0) * (STAV_PST[p.stav] || 0), 0);
-  const poTerminu = vP.filter((p) => p.fu && p.fu <= dnes() && !["vyhrano", "prohrano", "odlozeno"].includes(p.stav));
-  $("#d-uvod").textContent = `Obory: ${S.obory.join(", ") || "žádné – nastavte v Nastavení"} · území: ${S.kraje.join(", ") || "celá ČR"}.`;
-  const dl = [
-    [cislo(nove.length), "nových příležitostí za 7 dní", `${cislo(moje.length)} celkem ve vašich oborech`],
-    [cislo(otevrene.length), "otevřených zakázek", otevrene.length ? `odhad celkem ${kcK(otevrene.reduce((s, l) => s + (l.h || 0), 0))}` : ""],
-    [cislo(aktivni.length), "rozpracovaných obchodů", vazena ? `vážená hodnota ${kcK(vazena)}` : "zařaďte příležitosti tlačítkem"],
-    [cislo(poTerminu.length), "připomínek po termínu", poTerminu.length ? "viz Moje úkoly" : "vše v pořádku"],
-  ];
-  $("#d-dlazdice").innerHTML = dl.map(([c, p, s]) => `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
-  const top = filtrLeadu({}).sort((a, b) => b.skore - a.skore).slice(0, 12);
-  $("#d-top").innerHTML = top.length ? `<div class="legenda-skore">${Object.entries(VAHY_POPIS).map(([k, p]) => `<span><i class="sk-${k}"></i>${p}</span>`).join("")}</div>` + top.map(kartaLeadu).join("")
-    : '<p class="tlumene">Nic – zkontrolujte obory a území v Nastavení.</p>';
-  const ukoly = Object.entries(P).filter(([, p]) => !["vyhrano", "prohrano", "odlozeno"].includes(p.stav) && (p.fu && p.fu <= posun(3) || p.stav === "oslovit"))
-    .sort((a, b) => (a[1].fu || "9") > (b[1].fu || "9") ? 1 : -1).slice(0, 20);
-  $("#d-ukoly").innerHTML = ukoly.length ? ukoly.map(([id, p]) => `<div class="polozka"><span class="stitek${p.fu && p.fu < dnes() ? " horko" : ""}">${esc(STAV_POPIS[p.stav])}</span>
-      <div><a href="#" data-lead="${esc(id)}">${esc(p.n)}</a></div><div class="meta">${p.fu ? "připomenout " + datum(p.fu) + " · " : ""}${esc(p.kdo || "")}${p.pozn ? " · " + esc(p.pozn.slice(0, 80)) : ""}</div></div>`).join("")
-    : '<p class="tlumene">Žádné úkoly. Příležitost zařadíte do „Můj obchod“ v jejím detailu.</p>';
-  const lh = filtrLeadu({ skryt: false }).filter((l) => l.druh === "veřejná zakázka" && dniDo(l.termin) <= 7).sort((a, b) => (a.termin > b.termin ? 1 : -1));
-  $("#d-lhuty").innerHTML = lh.length ? lh.map(kartaLeadu).join("") : '<p class="tlumene">Do 7 dní nekončí žádná lhůta ve vašich oborech a území.</p>';
+const DOKLAD_PORADI = { "silný": 3, "střední": 2, "malý": 1 };
+let OBJEVU_ZOBRAZ = 60;
+function filtrObjevu() {
+  const kat = $("#o-kat").value, typ = $("#o-typ").value, kr = $("#o-kraj").value, h = $("#o-hledat").value, jenDoklad = $("#o-doklad").checked;
+  return OBJEVY.filter((o) => (!kat || o.kat === kat) && (!typ || o.typ === typ) && (!kr || o.kr === kr) && (!mojeKraje() || kr || !o.kr || S.kraje.includes(o.kr))
+    && (!jenDoklad || o.doklad !== "malý") && hledej(h, o.n, o.kde, o.kr, o.typ, ...o.fakta));
+}
+function kartaObjevu(o) {
+  return `<div class="objev doklad-${o.doklad === "silný" ? "s" : o.doklad === "střední" ? "m" : "x"}">
+    <div class="objev-hlava"><span class="stitek">${esc(o.kat)}</span> <span class="tlumene">${esc(o.typ)}</span>
+      <span class="doklad" title="Síla dokladu podle velikosti vzorku nebo počtu nezávislých zdrojů">doklad: ${esc(o.doklad)} (${cislo(o.vzorek)})</span></div>
+    <div class="objev-nazev"><a href="#" data-objev="${esc(o.id)}">${esc(o.n)}</a>${o.kde || o.kr ? `<span class="tlumene"> · ${esc(o.kde || "")}${o.kde && o.kr ? ", " : ""}${esc(o.kr || "")}</span>` : ""}</div>
+    ${o.kc ? `<div class="objev-cislo">${kcK(o.kc)} <span class="tlumene">${esc(o.kcPopis || "")}</span></div>` : ""}
+    <ul class="fakta">${o.fakta.slice(0, 3).map((f) => `<li>${f}</li>`).join("")}</ul></div>`;
+}
+function kresliObjevy(zpet) {
+  if (zpet === true) OBJEVU_ZOBRAZ = 60;
+  const vse = filtrObjevu(), raz = $("#o-razeni").value;
+  const r = [...vse].sort(raz === "doklad" ? (a, b) => DOKLAD_PORADI[b.doklad] - DOKLAD_PORADI[a.doklad] || b.vzorek - a.vzorek
+    : raz === "datum" ? (a, b) => (b.d || "").localeCompare(a.d || "")
+    : (a, b) => (b.kc || 0) - (a.kc || 0) || DOKLAD_PORADI[b.doklad] - DOKLAD_PORADI[a.doklad] || (b.razeni || 0) - (a.razeni || 0));
+  const pocty = {}; for (const o of OBJEVY) pocty[o.kat] = (pocty[o.kat] || 0) + 1;
+  $("#o-dlazdice").innerHTML = KATEGORIE_OBJEVU.filter((k) => pocty[k]).map((k) =>
+    `<button class="karta dl-tl${$("#o-kat").value === k ? " vybrano" : ""}" data-okat="${esc(k)}"><div class="dl-cislo">${cislo(pocty[k])}</div><div class="dl-popis">${esc(k)}</div></button>`).join("");
+  $("#o-uvod").textContent = `Data k ${datum(D.vytvoreno)} · registr smluv ${SML_OD ? "od " + datum(SML_OD) : "—"} · vysoutěžených zakázek ${cislo(D.zakazky.filter((z) => z.cb > 0).length)} · aktivních nabídek majetku ${cislo((D.nabidky || []).filter((x) => x.a).length)}.`
+    + (S.obory.length || S.kraje.length ? ` Filtr z Nastavení: ${[S.obory.join(", "), S.kraje.join(", ")].filter(Boolean).join(" · ")}.` : "");
+  $("#o-pocet").textContent = `${cislo(r.length)} objevů`;
+  $("#o-seznam").innerHTML = r.slice(0, OBJEVU_ZOBRAZ).map(kartaObjevu).join("") || '<p class="tlumene">Nic neodpovídá filtru.</p>'
+    + "";
+  $("#o-vice").hidden = r.length <= OBJEVU_ZOBRAZ;
+  $("#o-vice").textContent = `Zobrazit dalších 60 (zbývá ${cislo(r.length - OBJEVU_ZOBRAZ)})`;
+}
+$("#o-vice").onclick = () => { OBJEVU_ZOBRAZ += 60; kresliObjevy(); };
+$("#o-dlazdice").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-okat]"); if (!b) return;
+  $("#o-kat").value = $("#o-kat").value === b.dataset.okat ? "" : b.dataset.okat; naplnTypy(); kresliObjevy(true);
+});
+function naplnTypy() { naplnVyber("#o-typ", [...new Set(OBJEVY.filter((o) => !$("#o-kat").value || o.kat === $("#o-kat").value).map((o) => o.typ))].sort(), "všechny typy"); }
+$("#o-kat").addEventListener("change", naplnTypy);
+napoj(["#o-hledat", "#o-kat", "#o-typ", "#o-kraj", "#o-razeni", "#o-doklad"], kresliObjevy);
+$("#o-csv").onclick = () => stahniCsv("objevy", [["kategorie", (o) => o.kat], ["typ", (o) => o.typ], ["nazev", (o) => o.n], ["kde", (o) => o.kde], ["kraj", (o) => o.kr],
+  ["kc", (o) => o.kc ? Math.round(o.kc) : ""], ["co_je_kc", (o) => o.kcPopis || ""], ["doklad", (o) => o.doklad], ["vzorek", (o) => o.vzorek],
+  ["fakta", (o) => o.fakta.map((f) => f.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")).join(" | ")],
+  ["odkaz", (o) => bezpecnaUrl((o.odkazy[0] || {}).u)]], filtrObjevu());
+function detailObjevu(id) {
+  const o = OBJEV.get(id); if (!o) return;
+  const p = P[id], lead = o.lead && LEAD.get(o.lead);
+  otevriPanel(`<p class="tlumene">${esc(o.kat)} · ${esc(o.typ)}</p><h2>${esc(o.n)}</h2>
+    <p>${o.kde || o.kr ? esc([o.kde, o.kr].filter(Boolean).join(", ")) + " · " : ""}doklad: <b>${esc(o.doklad)}</b> (${o.doklad === "malý" || o.doklad === "střední" || o.doklad === "silný" ? "vzorek / zdrojů " + cislo(o.vzorek) : ""})</p>
+    ${o.kc ? `<p class="objev-cislo">${kc(o.kc)} <span class="tlumene">${esc(o.kcPopis || "")}</span></p>` : ""}
+    <h3>Co data ukazují</h3><ul class="fakta">${o.fakta.map((f) => `<li>${f}</li>`).join("")}</ul>
+    ${o.odkazy.filter((x) => bezpecnaUrl(x.u)).length ? `<h3>Zdroje</h3>${o.odkazy.filter((x) => bezpecnaUrl(x.u)).map((x) => `<div class="pp">${odkaz(x.u, x.t)}</div>`).join("")}` : ""}
+    <h3>Dál v datech</h3><div class="pp">${[o.ico ? `<a href="#" data-ucet="${esc(o.ico)}">zákazník IČO ${esc(o.ico)}</a>` : "",
+      o.firma ? `<a href="#" data-firma="${esc(o.firma)}">dominantní dodavatel</a>` : "", lead ? `<a href="#" data-lead="${esc(lead.id)}">detail položky</a>` : "",
+      o.trh ? `<a href="#" data-trh="${esc(o.trh)}">nacenění v oboru ${esc(o.trh)}</a>` : ""].filter(Boolean).join(" · ") || '<span class="tlumene">—</span>'}</div>
+    <h3>Sledované</h3>
+    <p>${p ? `Sleduješ (${esc(STAV_POPIS[p.stav])}). <button id="ob-smazat" class="maly">Přestat sledovat</button>` : '<button id="ob-sledovat">Sledovat</button>'}</p>`);
+  const b = $("#ob-sledovat"); if (b) b.onclick = () => {
+    doObchodu({ id, n: o.n, kdo: o.kde || o.kr || "", ico: o.ico || "", u: (o.odkazy[0] || {}).u || "", druh: o.kat + " – " + o.typ, kr: o.kr, h: o.kc, termin: "" }, "novy");
+    detailObjevu(id);
+  };
+  const sm = $("#ob-smazat"); if (sm) sm.onclick = () => { delete P[id]; ulozP(); detailObjevu(id); };
 }
 
 /* ------------------------------------------------------------------ PŘÍLEŽITOSTI */
-const stavL = { razeni: "skore", smer: -1 };
+const stavL = { razeni: "pz", smer: -1 };
 const filtrL = () => filtrLeadu({ h: $("#l-hledat").value, typ: $("#l-typ").value, kr: $("#l-kraj").value, min: +$("#l-min").value, moje: $("#l-moje").checked, skryt: $("#l-skryt").checked });
 const SL_L = [
-  { k: "skore", t: "Skóre", c: 1, f: skoreHtml },
   { k: "n", t: "Příležitost", sir: 1, f: (l) => `<a href="#" data-lead="${esc(l.id)}">${esc(l.n)}</a><div class="tlumene">${esc(l.proc.slice(0, 200))}</div>` },
   { k: "druh", t: "Druh", f: (l) => `<span class="stitek">${esc(l.druh)}</span>` },
   { k: "kdo", t: "Kdo", f: (l) => l.ico ? `<a href="#" data-ucet="${esc(l.ico)}">${esc(l.kdo || l.ico)}</a>` : esc(l.kdo) },
   { k: "kr", t: "Kde", f: (l) => `${esc(nazevObce(l.obec))}<div class="tlumene">${esc(l.kr)}</div>` },
-  { k: "h", t: "Odhad hodnoty", c: 1, f: (l) => l.h ? `<span title="${esc(l.hz)}">${kcK(l.h)}</span>` : "" },
+  { k: "h", t: "Srovnatelné ceny", c: 1, f: (l) => l.h ? `${kcK(l.h)}<div class="tlumene">${esc(l.hz)}</div>` : "" },
+  { k: "pz", t: "Zachyceno", f: (l) => datum(l.pz) },
   { k: "termin", t: "Termín", h: (l) => l.termin || "", f: (l) => l.termin ? `${datum(l.termin)}<div class="tlumene">${zaDni(dniDo(l.termin))}</div>` : "" },
-  { k: "konk", t: "Obvykle nabídek", c: 1, f: (l) => l.konk == null ? "" : cislo(l.konk) },
+  { k: "konk", t: "Medián nabídek", c: 1, f: (l) => l.konk == null ? "" : cislo(l.konk) },
 ];
 function kresliLeady(zpet) {
   if (zpet === true) stavL.n = NA_STRANKU;
@@ -507,8 +714,8 @@ function kresliLeady(zpet) {
   tabulka($("#t-leady"), SL_L, r, stavL);
 }
 napoj(["#l-hledat", "#l-typ", "#l-kraj", "#l-min", "#l-moje", "#l-skryt"], kresliLeady);
-$("#l-csv").onclick = () => stahniCsv("prilezitosti", [["skore", (l) => l.skore], ["druh", (l) => l.druh], ["nazev", (l) => l.n], ["kdo", (l) => l.kdo], ["ico", (l) => l.ico],
-  ["obec", (l) => nazevObce(l.obec)], ["kraj", (l) => l.kr], ["odhad_kc", (l) => l.h ? Math.round(l.h) : ""], ["zdroj_odhadu", (l) => l.hz], ["termin", (l) => l.termin],
+$("#l-csv").onclick = () => stahniCsv("prilezitosti", [["druh", (l) => l.druh], ["nazev", (l) => l.n], ["kdo", (l) => l.kdo], ["ico", (l) => l.ico],
+  ["obec", (l) => nazevObce(l.obec)], ["kraj", (l) => l.kr], ["srovnatelne_ceny_kc", (l) => l.h ? Math.round(l.h) : ""], ["z_ceho", (l) => l.hz], ["zachyceno", (l) => l.pz], ["termin", (l) => l.termin],
   ["obory", (l) => l.kat.join(", ")], ["proc", (l) => l.proc], ["odkaz", (l) => bezpecnaUrl(l.u)]], filtrL());
 
 /* ------------------------------------------------------------------ detail příležitosti */
@@ -516,15 +723,18 @@ function otevriPanel(html) { $("#panel-obsah").innerHTML = html; $("#panel").hid
 $("#panel-zavrit").onclick = () => ($("#panel").hidden = true);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#panel").hidden = true; });
 document.addEventListener("click", (e) => {
-  const a = e.target.closest("[data-lead],[data-ucet],[data-firma]");
+  const a = e.target.closest("[data-lead],[data-ucet],[data-firma],[data-objev],[data-trh]");
   if (!a) return;
   e.preventDefault();
-  if (a.dataset.lead) detailLeadu(a.dataset.lead);
+  if (a.dataset.objev) detailObjevu(a.dataset.objev);
+  else if (a.dataset.trh) { $("#panel").hidden = true; $('#zalozky button[data-z="cena"]').click(); $("#c-kat").value = a.dataset.trh; $("#c-hledat").value = ""; kresliCenu(true); }
+  else if (a.dataset.lead) detailLeadu(a.dataset.lead);
   else if (a.dataset.ucet) detailUctu(a.dataset.ucet);
   else if (a.dataset.firma) detailKonkurenta(a.dataset.firma);
 });
 const radek = (k, v) => (v === "" || v == null ? "" : `<tr><th>${esc(k)}</th><td>${v}</td></tr>`);
 function detailLeadu(id) {
+  if (OBJEV.has(id)) return detailObjevu(id);
   const l = LEAD.get(id), p = P[id];
   if (!l && !p) return;
   const x = l || { id, n: p.n, kdo: p.kdo, ico: p.ico, u: p.u, druh: p.druh, kr: p.kr, kat: [], proc: "Příležitost už v datech není (zakázka skončila nebo signál zmizel). Záznam ve vašem obchodě zůstává.", h: p.h };
@@ -532,21 +742,20 @@ function detailLeadu(id) {
   const srovnani = x.kat && x.kat.length ? srovnatelne(x.n, x.kat, x.kr).slice(0, 6) : [];
   const ucet = x.ico ? UCTY.get(x.ico) : null;
   otevriPanel(`<h2>${esc(x.n)}</h2><p class="tlumene">${esc(x.druh)}${x.kr ? " · " + esc(x.kr) : ""}${x.obec ? " · " + esc(nazevObce(x.obec)) : ""}</p>
-    ${l ? `<p>${skoreHtml(l)}</p>` : ""}
-    <table class="info">${radek("Proč teď", esc(x.proc))}${radek("Kdo", x.ico ? `<a href="#" data-ucet="${esc(x.ico)}">${esc(x.kdo || x.ico)}</a> · IČO ${esc(x.ico)}` : esc(x.kdo))}
-      ${radek("Termín", esc(x.terminPopis || ""))}${radek("Odhad hodnoty", x.h ? `${kc(x.h)}<div class="tlumene">${esc(x.hz || "")}</div>` : "")}
-      ${radek("Obvykle nabídek", x.konk == null ? "" : cislo(x.konk))}${radek("Obory", esc((x.kat || []).join(", ")))}
+    <table class="info">${radek("Co je v datech", esc(x.proc))}${radek("Kdo", x.ico ? `<a href="#" data-ucet="${esc(x.ico)}">${esc(x.kdo || x.ico)}</a> · IČO ${esc(x.ico)}` : esc(x.kdo))}
+      ${radek("Termín / historie", esc(x.terminPopis || ""))}${radek("Srovnatelné ceny", x.h ? `${kc(x.h)}<div class="tlumene">${esc(x.hz || "")}</div>` : "")}
+      ${radek("Medián nabídek v oboru", x.konk == null ? "" : cislo(x.konk))}${radek("Obory", esc((x.kat || []).join(", ")))}
       ${radek("Zdroj", odkaz(x.u, "otevřít zdroj"))}
       ${x.ico ? radek("Rejstříky", `<a href="https://ares.gov.cz/ekonomicke-subjekty?ico=${esc(x.ico)}" target="_blank" rel="noopener noreferrer">ARES</a> · <a href="https://or.justice.cz/ias/ui/rejstrik-$firma?ico=${esc(x.ico)}" target="_blank" rel="noopener noreferrer">obchodní rejstřík</a> · <a href="https://smlouvy.gov.cz/vyhledavani?searchResultList-limit=10&do=searchResultList-setLimit&subject_idnum=${esc(x.ico)}" target="_blank" rel="noopener noreferrer">registr smluv</a>`) : ""}</table>
-    <h3>Můj obchod</h3>
+    <h3>Sledované</h3>
     <div class="lead-akce filtry">
       <select id="pl-stav">${STAVY.map(([k, t]) => `<option value="${k}"${p && p.stav === k ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>
       <label>připomenout <input id="pl-fu" type="date" value="${esc(p ? p.fu : posun(2))}"></label>
       <label>hodnota Kč <input id="pl-h" type="number" min="0" step="1000" value="${p && p.h ? Math.round(p.h) : x.h ? Math.round(x.h) : ""}" style="width:120px"></label>
     </div>
     <textarea id="pl-pozn" class="poznamka" placeholder="Poznámka (kontakt, co řekli, další krok)">${esc(p ? p.pozn : "")}</textarea>
-    <p><button id="pl-ulozit">${p ? "Uložit změny" : "Zařadit do mého obchodu"}</button> ${p ? '<button id="pl-smazat" class="maly">Odebrat</button>' : ""}</p>
-    ${ucet ? `<h3>Tento zákazník ve vašich oborech</h3>${souhrnUctu(ucet)}` : ""}
+    <p><button id="pl-ulozit">${p ? "Uložit změny" : "Sledovat"}</button> ${p ? '<button id="pl-smazat" class="maly">Odebrat</button>' : ""}</p>
+    ${ucet ? `<h3>Tento zákazník v datech</h3>${souhrnUctu(ucet)}` : ""}
     ${srovnani.length ? `<h3>Srovnatelné ceny</h3>${srovnani.map((s) => `<div class="pp">${odkaz(s.u, s.n)} · <b>${kcK(s.cena)}</b><div class="tlumene">${esc(s.kdo)} · ${datum(s.d)}${s.pn ? " · " + s.pn + " nabídek" : ""}</div></div>`).join("")}` : ""}
     ${konk.length ? `<h3>Kdo tu obvykle vyhrává</h3>${konk.map((k) => `<div class="pp"><a href="#" data-firma="${esc(k.ico)}">${esc(k.n)}</a> · ${cislo(k.c)}× · ${kcK(k.h)}</div>`).join("")}` : ""}`);
   $("#pl-ulozit").onclick = () => {
@@ -565,7 +774,6 @@ const SL_P = [
   { k: "n", t: "Obchod", sir: 1, f: (r) => `<a href="#" data-lead="${esc(r.id)}">${esc(r.n)}</a><div class="tlumene">${esc(r.druh || "")}${r.pozn ? " · " + esc(r.pozn.slice(0, 120)) : ""}</div>` },
   { k: "kdo", t: "Kdo", f: (r) => r.ico ? `<a href="#" data-ucet="${esc(r.ico)}">${esc(r.kdo || r.ico)}</a>` : esc(r.kdo) },
   { k: "h", t: "Hodnota", c: 1, f: (r) => kcK(r.h) },
-  { k: "vh", t: "Vážená", c: 1, h: (r) => (r.h || 0) * (STAV_PST[r.stav] || 0), f: (r) => kcK((r.h || 0) * (STAV_PST[r.stav] || 0)) },
   { k: "fu", t: "Připomenout", f: (r) => r.fu ? (r.fu < dnes() ? `<b>${datum(r.fu)}</b>` : datum(r.fu)) : "" },
   { k: "termin", t: "Lhůta", f: (r) => datum(r.termin) },
   { k: "zmeneno", t: "Změna", f: (r) => datum(r.zmeneno) },
@@ -578,11 +786,16 @@ function kresliPipeline(zpet) {
   const akt = vse.filter((p) => !["vyhrano", "prohrano", "odlozeno"].includes(p.stav)), vyhr = vse.filter((p) => p.stav === "vyhrano"), proh = vse.filter((p) => p.stav === "prohrano");
   $("#p-dlazdice").innerHTML = [
     [cislo(akt.length), "rozpracovaných", kcK(akt.reduce((s, p) => s + (p.h || 0), 0)) || ""],
-    [kcK(akt.reduce((s, p) => s + (p.h || 0) * (STAV_PST[p.stav] || 0), 0)) || "0", "vážená hodnota", "hodnota × pravděpodobnost stavu"],
+    [cislo(akt.filter((p) => p.fu && p.fu <= dnes()).length), "připomínek na dnes a dřív", ""],
     [cislo(vyhr.length), "vyhráno", kcK(vyhr.reduce((s, p) => s + (p.h || 0), 0))],
     [vyhr.length + proh.length ? Math.round(100 * vyhr.length / (vyhr.length + proh.length)) + " %" : "–", "úspěšnost", `${vyhr.length} z ${vyhr.length + proh.length} rozhodnutých`],
   ].map(([c, p, s]) => `<div class="karta"><div class="dl-cislo">${c}</div><div class="dl-popis">${p}</div><div class="dl-pod">${s}</div></div>`).join("");
   $("#p-pocet").textContent = `${cislo(r.length)} záznamů`;
+  const ukoly = vse.filter((p) => !["vyhrano", "prohrano", "odlozeno"].includes(p.stav) && p.fu && p.fu <= posun(3)).sort((a, b) => (a.fu > b.fu ? 1 : -1));
+  const lhuty = filtrLeadu({ skryt: false }).filter((l) => l.druh === "veřejná zakázka" && P[l.id] && dniDo(l.termin) <= 7);
+  $("#p-ukoly").innerHTML = [...ukoly.map((p) => `<div class="polozka"><span class="stitek${p.fu < dnes() ? " horko" : ""}">připomenout ${datum(p.fu)}</span>
+      <div><a href="#" data-lead="${esc(p.id)}">${esc(p.n)}</a></div><div class="meta">${esc(STAV_POPIS[p.stav])}${p.pozn ? " · " + esc(p.pozn.slice(0, 80)) : ""}</div></div>`),
+    ...lhuty.map(kartaLeadu)].join("") || '<p class="tlumene">Na příští 3 dny nic. Sledovat jde z detailu kteréhokoli objevu nebo položky.</p>';
   tabulka($("#t-pipeline"), SL_P, r, stavP);
 }
 napoj(["#p-stav"], kresliPipeline);
@@ -753,7 +966,7 @@ const SL_C = [
 function kresliCenu(zpet) {
   if (zpet === true) stavC.n = NA_STRANKU;
   stavC.prekresli = kresliCenu;
-  const kat = $("#c-kat").value ? [$("#c-kat").value] : S.obory, kr = $("#c-kraj").value;
+  const kat = $("#c-kat").value ? [$("#c-kat").value] : (S.obory.length ? S.obory : OBORY), kr = $("#c-kraj").value;
   const r = srovnatelne($("#c-hledat").value, kat, kr);
   const ceny = r.map((x) => x.cena), zak = r.filter((x) => x.zdroj === "zakázka");
   const ns = zak.map((x) => nahskok(x.k)).filter((x) => x != null);
@@ -848,7 +1061,6 @@ function kresliNastaveni() {
   $("#n-obory").innerHTML = OBORY.map((o) => `<label><input type="checkbox" data-obor="${esc(o)}"${S.obory.includes(o) ? " checked" : ""}> ${esc(o)}</label>`).join("");
   $("#n-kraje").innerHTML = `<label><input type="checkbox" data-kraj=""${!S.kraje.length ? " checked" : ""}> celá ČR</label>` + KRAJE.map((k) => `<label><input type="checkbox" data-kraj="${esc(k)}"${S.kraje.includes(k) ? " checked" : ""}> ${esc(k)}</label>`).join("");
   $("#n-ico").value = S.ico || "";
-  $("#n-vahy").innerHTML = `<div class="vyber-pole">${Object.entries(VAHY_POPIS).map(([k, p]) => `<label><span><i class="tecka sk-${k}"></i> ${esc(p)}</span><input type="range" min="0" max="5" step="1" data-vaha="${k}" value="${S.vahy[k]}"><output>${S.vahy[k]}</output></label>`).join("")}</div>`;
 }
 document.addEventListener("change", (e) => {
   const t = e.target;
@@ -858,9 +1070,5 @@ document.addEventListener("change", (e) => {
     else { S.kraje = [...document.querySelectorAll("[data-kraj]:checked")].map((x) => x.dataset.kraj).filter(Boolean); const v = document.querySelector('[data-kraj=""]'); if (v) v.checked = !S.kraje.length; }
   } else if (t.id === "n-ico") { S.ico = (t.value.match(/\d{8}/) || [""])[0]; }
   else return;
-  ulozS(); KONK = null; sestavLeady(); sestavUcty();
-});
-document.addEventListener("input", (e) => {
-  const t = e.target; if (t.dataset.vaha === undefined) return;
-  S.vahy[t.dataset.vaha] = Number(t.value); t.nextElementSibling.textContent = t.value; ulozS(); prepocitejSkore();
+  ulozS(); KONK = null; sestavLeady(); sestavUcty(); sestavObjevy();
 });

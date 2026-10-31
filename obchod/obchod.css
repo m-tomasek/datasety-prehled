@@ -22,3 +22,16 @@ textarea.poznamka { width: 100%; min-height: 70px; font: inherit; color: var(--t
 @media (max-width: 600px) { .vyber-pole label { grid-template-columns: 1fr 1fr 28px; } }
 .polozka .stitek { align-self: start; justify-self: start; }
 .odkaz-tl { white-space: nowrap; }
+.objevy { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.objev { background: var(--plocha); border: 1px solid var(--cara); border-left: 4px solid var(--cara); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.objev.doklad-s { border-left-color: var(--s3); } .objev.doklad-m { border-left-color: var(--s4); }
+.objev-hlava { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.objev-hlava .doklad { margin-left: auto; color: var(--text2); }
+.objev-nazev { margin: 6px 0 2px; font-weight: 600; overflow-wrap: anywhere; }
+.objev-cislo { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.objev-cislo .tlumene { font-size: 12px; font-weight: 400; }
+ul.fakta { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--text2); }
+ul.fakta li { margin: 2px 0; overflow-wrap: anywhere; }
+.dl-tl { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.dl-tl.vybrano { outline: 2px solid var(--s1); }
+@media (max-width: 600px) { .objevy { grid-template-columns: 1fr; } }

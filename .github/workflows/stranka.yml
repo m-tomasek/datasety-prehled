@@ -1,0 +1,67 @@
+name: Stránka
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  nasazeni:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.nasazeni.outputs.page_url }}
+    steps:
+      - name: Kontrola
+        id: nova
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          data=$(gh api repos/${{ github.repository }}/commits/data --jq .sha)
+          echo "data=$data" >> "$GITHUB_OUTPUT"
+          nasazeno=$(curl -s "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/verze.txt?t=$(date +%s)" || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$nasazeno" = "$data" ]; then
+            echo "nasadit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "nasadit=1" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.nova.outputs.nasadit == '1'
+        with:
+          ref: main
+          path: web
+      - uses: actions/checkout@v4
+        if: steps.nova.outputs.nasadit == '1'
+        with:
+          ref: data
+          path: data
+      - name: Složení
+        id: slozeni
+        if: steps.nova.outputs.nasadit == '1'
+        run: |
+          if [ ! -f data/a.enc ]; then echo "Chybí a.enc – stránka zůstává beze změny."; echo "ok=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          mkdir -p site
+          cp -r web/index.html web/z.js web/r web/o web/lib web/.nojekyll site/
+          cp data/*.enc data/info.json site/
+          echo -n "${{ steps.nova.outputs.data }}" > site/verze.txt
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/configure-pages@v5
+        if: steps.slozeni.outputs.ok == '1'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.slozeni.outputs.ok == '1'
+        with:
+          path: site
+      - id: nasazeni
+        if: steps.slozeni.outputs.ok == '1'
+        uses: actions/deploy-pages@v4
